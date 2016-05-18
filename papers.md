@@ -1,0 +1,1 @@
+Daciuk, Jan, Stoyan Mihov, Bruce W. Watson, and Richard E. Watson. "Incremental construction of minimal acyclic finite-state automata." Computational linguistics 26, no. 1 (2000): 3-16. http://dx.doi.org/10.1162/089120100561601
