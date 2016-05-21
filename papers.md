@@ -1,1 +1,2 @@
 Daciuk, Jan, Stoyan Mihov, Bruce W. Watson, and Richard E. Watson. "Incremental construction of minimal acyclic finite-state automata." Computational linguistics 26, no. 1 (2000): 3-16. http://dx.doi.org/10.1162/089120100561601
+Owens, Scott, John Reppy, and Aaron Turon. "Regular-expression derivatives re-examined." Journal of Functional Programming 19, no. 02 (2009): 173-190. http://dx.doi.org/10.1017/S0956796808007090
