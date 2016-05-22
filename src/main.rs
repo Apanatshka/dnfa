@@ -81,7 +81,8 @@ fn dict_dfa() {
         if !state.transitions.is_empty() {
             println!("");
         }
-        for (c, tr) in (*state.transitions).into_iter().enumerate().filter(|&(i,&x)| !(x == DFA_START || x == DFA_STUCK)) {
+        for (c, tr) in (*state.transitions).into_iter().enumerate().filter(|&(_,&x)|
+                !(x == DFA_START || x == DFA_STUCK)) {
             println!("  {} -> {:?},", (c as u8) as char, tr)
         }
         print!("]");
