@@ -5,5 +5,4 @@ pub mod dfa;
 pub mod nfa;
 
 #[cfg(test)]
-mod tests {
-}
+mod tests {}

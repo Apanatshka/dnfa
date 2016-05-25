@@ -2,6 +2,8 @@ extern crate bit_vec;
 
 use self::bit_vec::BitVec;
 use std::collections::HashMap;
+use std::collections::HashSet;
+use std::fmt;
 
 use super::dfa::{DFA, DFAState, DFA_STUCK, DFA_START};
 
@@ -40,22 +42,82 @@ impl NFA {
         nfa
     }
 
-    pub fn freeze(self) -> Result<DFA, ()> {
+    pub fn freeze(&self) -> Result<DFA, ()> {
         let mut states = Vec::with_capacity(self.states.len());
-        for state in self.states {
-            states.push(try!(state.freeze_state()));
+        for state in self.states.iter() {
+            states.push(try!(state.freeze()));
         }
-        Ok(DFA {
-            states: states.into_boxed_slice(), 
-            finals: self.finals.clone(),
-        })
+        Ok(DFA::new(states.into_boxed_slice(), self.finals.clone()))
+    }
+
+    pub fn apply(&self, input: &[u8]) -> bool {
+        let mut cur_states = HashSet::new();
+        let mut nxt_states = HashSet::new();
+        cur_states.insert(NFA_START);
+        for &byte in input {
+            for cur_state in cur_states {
+                for &nxt_state in self.states[cur_state].transitions[byte as usize].iter() {
+                    nxt_states.insert(nxt_state);
+                }
+            }
+            cur_states = nxt_states;
+            nxt_states = HashSet::new();
+        }
+        for state in cur_states {
+            if self.finals[state] {
+                return true;
+            }
+        }
+        false
+    }
+}
+
+impl fmt::Display for NFA {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        for (i, state) in (*self.states).into_iter().enumerate() {
+            try!(write!(f, "{} -> [", i));
+            if !state.transitions.is_empty() {
+                try!(writeln!(f, ""));
+            }
+            let mut last_c = 0;
+            let mut iter = (*state.transitions)
+                .into_iter()
+                .enumerate()
+                .peekable();
+            while let Some((c, tr)) = iter.next() {
+                if let Some(&(c2, tr2)) = iter.peek() {
+                    if tr == tr2 {
+                        continue;
+                    }
+                    if c == last_c {
+                        try!(writeln!(f, "  {:?} -> {:?},", c as u8 as char, tr));
+                    } else {
+                        try!(writeln!(f,
+                                      "  [{:?},{:?}] -> {:?},",
+                                      last_c as u8 as char,
+                                      (c as u8) as char,
+                                      tr));
+                    }
+                    last_c = c2;
+                }
+            }
+            try!(write!(f, "]"));
+            if i == NFA_START {
+                try!(write!(f, " -- start state"));
+            }
+            if self.finals[i] {
+                try!(write!(f, " -- final state"));
+            }
+            try!(writeln!(f, ","));
+        }
+        Ok(())
     }
 }
 
 impl NFAState {
-    fn freeze_state(self) -> Result<DFAState, ()> {
+    fn freeze(&self) -> Result<DFAState, ()> {
         let mut transitions = Vec::with_capacity(self.transitions.len());
-        for sns in self.transitions {
+        for sns in self.transitions.iter() {
             if sns.len() == 0 {
                 transitions.push(DFA_STUCK);
             } else if sns.len() == 1 {
@@ -64,9 +126,7 @@ impl NFAState {
                 return Err(());
             }
         }
-        Ok(DFAState {
-            transitions: transitions.into_boxed_slice()
-        })
+        Ok(DFAState::new(transitions.into_boxed_slice()))
     }
 }
 
@@ -77,27 +137,30 @@ pub fn powerset_construction(nfa: NFA) -> NFA {
     };
     let mut states_map = HashMap::new();
     let cur_states = vec![NFA_START];
-    
+
     dnfa.finals.set(DFA_START, nfa.finals.get(NFA_START).unwrap());
-    
+
     states_map.insert(Vec::new(), DFA_STUCK);
     states_map.insert(cur_states.clone(), DFA_START);
-    
+
     psc_rec_helper(&nfa, &mut dnfa, &mut states_map, cur_states, DFA_START);
     dnfa
 }
 
-fn psc_rec_helper(nfa: &NFA, dnfa: &mut NFA, 
-        states_map: &mut HashMap<StateNumberSet, usize>, 
-        cur_states: StateNumberSet, cur_num: usize) {
+// Quick and dirty implementation, needs better thought out version
+fn psc_rec_helper(nfa: &NFA,
+                  dnfa: &mut NFA,
+                  states_map: &mut HashMap<StateNumberSet, usize>,
+                  cur_states: StateNumberSet,
+                  cur_num: usize) {
     for input in 0..255 {
         let mut nxt_states = Vec::new();
+        let mut fin = false;
         for cur_state in cur_states.clone() {
             let ref states = nfa.states[cur_state].transitions[input];
             nxt_states.append(&mut states.clone());
+            fin |= states.iter().map(|&st| nfa.finals.get(st).unwrap_or(false)).any(|x| x);
         }
-        let fin = nxt_states.iter().map(|&st| nfa.finals.get(st).unwrap_or(false))
-                    .any(|x| x);
         match states_map.get(&nxt_states) {
             Some(&nxt_num) => dnfa.states[cur_num].transitions[input].push(nxt_num),
             None => {
@@ -109,7 +172,7 @@ fn psc_rec_helper(nfa: &NFA, dnfa: &mut NFA,
                 if nxt_num != DFA_STUCK {
                     psc_rec_helper(nfa, dnfa, states_map, nxt_states, nxt_num);
                 }
-            },
+            }
         }
     }
 }
