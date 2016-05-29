@@ -23,7 +23,7 @@ pub struct DDFA {
 
 // Living dangerously: raw pointers baby
 #[derive(Clone, PartialEq)]
-pub struct DDFAState {
+struct DDFAState {
     transitions: Box<[*const DDFAState]>,
     is_final: bool,
 }
@@ -136,3 +136,6 @@ impl DDFA {
         unsafe { (*cur_state).is_final }
     }
 }
+
+#[cfg(test)]
+mod tests {}
