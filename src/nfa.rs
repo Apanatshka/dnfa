@@ -94,7 +94,7 @@ impl NFA {
             finals: BitVec::from_elem(2, false),
         };
         let mut states_map: HashMap<Vec<usize>, usize> = HashMap::new();
-        let cur_states: HashSet<usize> = [NFA_START].into_iter().map(|x| *x).collect();
+        let cur_states: HashSet<usize> = [NFA_START].into_iter().cloned().collect();
 
         dnfa.finals.set(DFA_START, self.finals.get(NFA_START).unwrap());
 
@@ -176,7 +176,7 @@ fn psc_rec_helper(nfa: &NFA,
         let mut fin = false;
         for cur_state in cur_states.clone() {
             let states = &nfa.states[cur_state].transitions[input];
-            nxt_states = nxt_states.union(&mut states.clone()).map(|x| *x).collect();
+            nxt_states = nxt_states.union(states).cloned().collect();
             fin |= states.iter().map(|&st| nfa.finals.get(st).unwrap_or(false)).any(|x| x);
         }
         let nxt_states_vec = nxt_states.clone().into_iter().collect();
