@@ -102,7 +102,7 @@ impl fmt::Display for DFA {
                         try!(writeln!(f, "  {:?} -> {:?},", c as u8 as char, tr));
                     } else {
                         try!(writeln!(f,
-                                      "  [{:?},{:?}] -> {:?},",
+                                      "  [{:?}-{:?}] -> {:?},",
                                       last_c as u8 as char,
                                       (c as u8) as char,
                                       tr));
