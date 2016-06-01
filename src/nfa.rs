@@ -32,9 +32,13 @@ impl NFA {
         for &string in dict.iter() {
             let mut cur_state = NFA_START;
             for byte in string.bytes() {
-                nxt_state += 1;
-                nfa.states[cur_state].transitions[byte as usize].insert(nxt_state);
-                cur_state = nxt_state;
+                if let Some(&state) = nfa.states[cur_state].transitions[byte as usize].get(&0) {
+                    cur_state = state;
+                } else {
+                    nxt_state += 1;
+                    nfa.states[cur_state].transitions[byte as usize].insert(nxt_state);
+                    cur_state = nxt_state;
+                }
             }
             nfa.finals.set(cur_state, true);
         }
@@ -98,7 +102,6 @@ impl NFA {
         states_map.insert(cur_states.clone().into_iter().collect(), DFA_START);
 
         psc_rec_helper(self, &mut dnfa, &mut states_map, cur_states, DFA_START);
-        println!("{:?}, {}", states_map, states_map.len());
         dnfa
     }
 }
