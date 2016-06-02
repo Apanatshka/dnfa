@@ -128,7 +128,7 @@ impl DDFA {
         let mut cur_state: *const DDFAState = &self.states[DFA_START];
         let stuck = &self.states[DFA_STUCK];
         for &byte in input {
-            cur_state = unsafe { cur_state.offset(byte as isize) };
+            cur_state = unsafe { (*cur_state).transitions[byte as usize] };
             if cur_state == stuck {
                 break;
             }
