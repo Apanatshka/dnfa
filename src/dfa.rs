@@ -1,6 +1,7 @@
 extern crate bit_vec;
 
 use self::bit_vec::BitVec;
+use std::mem;
 use std::fmt;
 
 pub const DFA_START: usize = 0; // Same as nfa::NFA_START!
@@ -17,12 +18,13 @@ pub struct DFA {
     finals: BitVec,
 }
 
+#[derive(Debug)]
 pub struct DDFA {
     states: Box<[DDFAState]>,
 }
 
 // Living dangerously: raw pointers baby
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 struct DDFAState {
     transitions: Box<[*const DDFAState]>,
     is_final: bool,
@@ -134,6 +136,54 @@ impl DDFA {
             }
         }
         unsafe { (*cur_state).is_final }
+    }
+}
+
+impl fmt::Display for DDFA {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let start = &self.states[0] as *const DDFAState;
+        for (i, state) in (*self.states).into_iter().enumerate() {
+            if i == DFA_STUCK {
+                try!(writeln!(f, "{} -- stuck state,", DFA_STUCK));
+                continue;
+            }
+            try!(write!(f, "{} -> [", i));
+            if !state.transitions.is_empty() {
+                try!(writeln!(f, ""));
+            }
+            let mut last_c = 0;
+            let mut iter = (*state.transitions)
+                .into_iter()
+                .enumerate()
+                .peekable();
+            while let Some((c, tr)) = iter.next() {
+                if let Some(&(c2, tr2)) = iter.peek() {
+                    if tr == tr2 {
+                        continue;
+                    }
+                    let tr_no = (*tr as usize - start as usize) / mem::size_of::<DDFAState>();
+                    if c == last_c {
+                        try!(writeln!(f, "  {:?} -> {:?},", c as u8 as char, tr_no));
+                    } else {
+                        try!(writeln!(f,
+                                      "  [{:?}-{:?}] -> {:?},",
+                                      last_c as u8 as char,
+                                      (c as u8) as char,
+                                      tr_no));
+                    }
+                    last_c = c2;
+                }
+            }
+            try!(write!(f, "]"));
+            if i == DFA_START {
+                try!(write!(f, " -- start state"));
+            }
+            if state.is_final {
+                try!(write!(f, " -- final state"));
+            }
+            try!(writeln!(f, ","));
+        }
+        Ok(())
     }
 }
 
