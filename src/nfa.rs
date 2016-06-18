@@ -128,10 +128,17 @@ impl NFA {
                 let nxt_states_vec = nxt_states.clone().into_iter().collect();
                 match states_map.get(&nxt_states_vec) {
                     Some(&nxt_num) => {
-                        dnfa.states[cur_num]
+                        if dnfa.states[cur_num]
                             .transitions
-                            .entry(input)
-                            .or_insert([nxt_num].iter().cloned().collect());
+                            .get_lte(&input)
+                            .map(|sns| !sns.contains(&nxt_num))
+                            .unwrap_or(true) {
+                            dnfa.states[cur_num]
+                                .transitions
+                                .entry(input)
+                                .or_insert(BTreeSet::new())
+                                .insert(nxt_num);
+                        }
                     }
                     None => {
                         let nxt_num = dnfa.states.len();
@@ -141,7 +148,8 @@ impl NFA {
                         dnfa.states[cur_num]
                             .transitions
                             .entry(input)
-                            .or_insert([nxt_num].iter().cloned().collect());
+                            .or_insert(BTreeSet::new())
+                            .insert(nxt_num);
                         if nxt_num != AUTO_STUCK {
                             worklist.push((nxt_states, nxt_num));
                         }
@@ -175,23 +183,33 @@ impl fmt::Display for NFA {
             if !state.transitions.is_empty() {
                 try!(writeln!(f, ""));
             }
-            let mut last_c = 0;
-            let mut iter = state.transitions.iter().peekable();
-            while let Some((&c, ref tr)) = iter.next() {
-                if let Some(&(&c2, ref tr2)) = iter.peek() {
-                    if *tr == *tr2 {
-                        continue;
-                    }
-                    if c == last_c {
+            let mut iter = state.transitions.iter();
+            let mut c = 0;
+            let mut tr: &BTreeSet<usize> = &[AUTO_STUCK].iter().cloned().collect();
+            loop {
+                if let Some((&c2, ref tr2)) = iter.next() {
+                    if c == c2 - 1 {
                         try!(writeln!(f, "  {:?} -> {:?},", c as u8 as char, tr));
                     } else {
                         try!(writeln!(f,
                                       "  [{:?}-{:?}] -> {:?},",
-                                      last_c as u8 as char,
-                                      (c as u8) as char,
+                                      c as u8 as char,
+                                      c2 as u8 as char,
                                       tr));
                     }
-                    last_c = c2;
+                    c = c2;
+                    tr = tr2;
+                } else {
+                    if c == 255 {
+                        try!(writeln!(f, "  {:?} -> {:?},", c as u8 as char, tr));
+                    } else {
+                        try!(writeln!(f,
+                                      "  [{:?}-{:?}] -> {:?},",
+                                      c as u8 as char,
+                                      255 as char,
+                                      tr));
+                    }
+                    break;
                 }
             }
             try!(write!(f, "]"));

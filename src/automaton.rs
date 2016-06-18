@@ -25,7 +25,7 @@ pub trait Automaton<Input: Ord> {
     }
 }
 
-
+// This is from burntsushi/aho-corasick.
 /// Records a match in the search text.
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Match {
