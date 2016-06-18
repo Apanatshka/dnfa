@@ -14,7 +14,7 @@ fn main() {
     nfa.ignore_prefixes();
     println!("ignore-prefixes");
     println!("aab -> {}", nfa.apply("aab".as_bytes()));
-    let mut dnfa = nfa.powerset_construction();
+    let dnfa = nfa.powerset_construction();
     println!("dnfa");
     // println!("{}", dnfa);
     for &word in dictionary {
@@ -22,8 +22,10 @@ fn main() {
     }
     println!("aab -> {}", dnfa.apply("aab".as_bytes()));
     println!("abb -> {}", dnfa.apply("abb".as_bytes()));
-    dnfa.ignore_postfixes();
-    let dfa = dnfa.powerset_construction().freeze().unwrap();
+    let mut nfa = NFA::from_dictionary(dictionary);
+    nfa.ignore_prefixes();
+    nfa.ignore_postfixes();
+    let dfa = nfa.powerset_construction().freeze().unwrap();
     println!("dfa");
     // println!("{}", dfa);
     for &word in dictionary {
@@ -31,4 +33,11 @@ fn main() {
     }
     println!("ignore-postfixes");
     println!("abb -> {}", dfa.apply("abb".as_bytes()));
+    let ddfa = dfa.into_ddfa().unwrap();
+    println!("ddfa");
+    // println!("{}", ddfa);
+    for &word in dictionary {
+        println!("{} -> {}", word, ddfa.apply(word.as_bytes()));
+    }
+    println!("abb -> {}", ddfa.apply("abb".as_bytes()));
 }

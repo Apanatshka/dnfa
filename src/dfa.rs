@@ -4,8 +4,7 @@ use self::bit_vec::BitVec;
 use std::mem;
 use std::fmt;
 
-pub const DFA_START: usize = 0; // Same as nfa::NFA_START!
-pub const DFA_STUCK: usize = 1;
+use automaton::{AUTO_START, AUTO_STUCK};
 
 #[derive(Debug)]
 pub struct DFAState {
@@ -68,10 +67,10 @@ impl DFA {
     }
 
     pub fn apply(&self, input: &[u8]) -> bool {
-        let mut cur_state = DFA_START;
+        let mut cur_state = AUTO_START;
         for &byte in input {
             cur_state = self.states[cur_state].transitions[byte as usize];
-            if cur_state == DFA_STUCK {
+            if cur_state == AUTO_STUCK {
                 break;
             }
         }
@@ -82,8 +81,8 @@ impl DFA {
 impl fmt::Display for DFA {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         for (i, state) in (*self.states).into_iter().enumerate() {
-            if i == DFA_STUCK {
-                try!(writeln!(f, "{} -- stuck state,", DFA_STUCK));
+            if i == AUTO_STUCK {
+                try!(writeln!(f, "{} -- stuck state,", AUTO_STUCK));
                 continue;
             }
             try!(write!(f, "{} -> [", i));
@@ -113,7 +112,7 @@ impl fmt::Display for DFA {
                 }
             }
             try!(write!(f, "]"));
-            if i == DFA_START {
+            if i == AUTO_START {
                 try!(write!(f, " -- start state"));
             }
             if self.finals[i] {
@@ -127,8 +126,8 @@ impl fmt::Display for DFA {
 
 impl DDFA {
     pub fn apply(&self, input: &[u8]) -> bool {
-        let mut cur_state: *const DDFAState = &self.states[DFA_START];
-        let stuck = &self.states[DFA_STUCK];
+        let mut cur_state: *const DDFAState = &self.states[AUTO_START];
+        let stuck = &self.states[AUTO_STUCK];
         for &byte in input {
             cur_state = unsafe { (*cur_state).transitions[byte as usize] };
             if cur_state == stuck {
@@ -143,8 +142,8 @@ impl fmt::Display for DDFA {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let start = &self.states[0] as *const DDFAState;
         for (i, state) in (*self.states).into_iter().enumerate() {
-            if i == DFA_STUCK {
-                try!(writeln!(f, "{} -- stuck state,", DFA_STUCK));
+            if i == AUTO_STUCK {
+                try!(writeln!(f, "{} -- stuck state,", AUTO_STUCK));
                 continue;
             }
             try!(write!(f, "{} -> [", i));
@@ -175,7 +174,7 @@ impl fmt::Display for DDFA {
                 }
             }
             try!(write!(f, "]"));
-            if i == DFA_START {
+            if i == AUTO_START {
                 try!(write!(f, " -- start state"));
             }
             if state.is_final {
