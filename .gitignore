@@ -19,3 +19,7 @@ Cargo.lock
 
 # Downloaded papers
 *.pdf
+
+# IntelliJ crap
+.idea/
+*.iml
