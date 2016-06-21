@@ -4,7 +4,7 @@ use self::bit_vec::BitVec;
 use std::mem;
 use std::fmt;
 
-use automaton::{AUTO_START, AUTO_STUCK};
+use nfa::{AUTO_START, AUTO_STUCK};
 
 #[derive(Debug)]
 pub struct DFAState {

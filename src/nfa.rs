@@ -8,10 +8,13 @@ use std::collections::BTreeSet;
 use std::fmt;
 use std::borrow::Borrow;
 
-use automaton::{AUTO_START, AUTO_STUCK};
+use automaton::{Automaton, Match};
 use dfa::{DFA, DFAState};
 
-type StateNumberSet = BTreeSet<usize>;
+pub const AUTO_START: usize = 0;
+pub const AUTO_STUCK: usize = 1;
+
+pub type StateNumberSet = BTreeSet<usize>;
 
 #[derive(Clone)]
 struct NFAState {
@@ -86,8 +89,8 @@ impl NFA {
         cur_states.insert(AUTO_START);
         for &byte in input {
             for cur_state in cur_states {
-                for &nxt_state in self.states[cur_state].transitions.get(&byte).unwrap() {
-                    nxt_states.insert(nxt_state);
+                if let Some(nxts) = self.states[cur_state].transitions.get(&byte) {
+                    nxt_states.extend(nxts);
                 }
             }
             cur_states = nxt_states;
@@ -110,6 +113,7 @@ impl NFA {
         let mut states_map: HashMap<Vec<usize>, usize> = HashMap::new();
         let cur_states: BTreeSet<usize> = [AUTO_START].into_iter().cloned().collect();
 
+        assert!(self.finals.get(AUTO_START).is_some());
         dnfa.finals.set(AUTO_START, self.finals.get(AUTO_START).unwrap());
 
         states_map.insert(Vec::new(), AUTO_STUCK);
@@ -121,23 +125,29 @@ impl NFA {
                 let mut nxt_states = BTreeSet::new();
                 let mut fin = false;
                 for cur_state in cur_states.clone() {
+                    assert!(self.states[cur_state].transitions.get(&input).is_some());
                     let states = self.states[cur_state].transitions.get(&input).unwrap();
                     nxt_states.extend(states);
+                    for &st in states {
+                        assert!(self.finals.get(st).is_some());
+                    }
                     fin |= states.iter().map(|&st| self.finals.get(st).unwrap()).any(|x| x);
                 }
                 let nxt_states_vec = nxt_states.clone().into_iter().collect();
+                let add_state = |states: &mut [NFAState], nxt_num| {
+                    states[cur_num]
+                        .transitions
+                        .entry(input)
+                        .or_insert_with(BTreeSet::new)
+                        .insert(nxt_num);
+                };
                 match states_map.get(&nxt_states_vec) {
                     Some(&nxt_num) => {
                         if dnfa.states[cur_num]
                             .transitions
                             .get_lte(&input)
-                            .map(|sns| !sns.contains(&nxt_num))
-                            .unwrap_or(true) {
-                            dnfa.states[cur_num]
-                                .transitions
-                                .entry(input)
-                                .or_insert(BTreeSet::new())
-                                .insert(nxt_num);
+                            .map_or(true, |sns| !sns.contains(&nxt_num)) {
+                            add_state(&mut dnfa.states, nxt_num);
                         }
                     }
                     None => {
@@ -145,19 +155,52 @@ impl NFA {
                         dnfa.states.push(NFAState { transitions: BTreeMap::new() });
                         dnfa.finals.push(fin);
                         states_map.insert(nxt_states_vec, nxt_num);
-                        dnfa.states[cur_num]
-                            .transitions
-                            .entry(input)
-                            .or_insert(BTreeSet::new())
-                            .insert(nxt_num);
                         if nxt_num != AUTO_STUCK {
                             worklist.push((nxt_states, nxt_num));
                         }
+                        add_state(&mut dnfa.states, nxt_num);
                     }
                 }
             }
         }
         dnfa
+    }
+}
+
+impl Automaton<u8> for NFA {
+    type State = StateNumberSet;
+
+
+    fn start_state() -> Self::State {
+        [AUTO_START].iter().cloned().collect()
+    }
+
+    fn stuck_state() -> Self::State {
+        [AUTO_STUCK].iter().cloned().collect()
+    }
+
+    #[inline]
+    fn next_state(&self, states: &Self::State, input: &u8) -> Self::State {
+        let mut nxt_states = BTreeSet::new();
+        for &state in states {
+            for &nxt_state in self.states[state].transitions.get(input).unwrap() {
+                nxt_states.insert(nxt_state);
+            }
+        }
+        nxt_states
+    }
+
+    fn has_match(&self, states: &Self::State, outi: usize) -> bool {
+        for &state in states {
+            if self.finals[state] {
+                return true;
+            }
+        }
+        false
+    }
+
+    fn get_match(&self, si: &Self::State, outi: usize, texti: usize) -> Match {
+        unimplemented!()
     }
 }
 
@@ -242,4 +285,120 @@ impl NFAState {
 }
 
 #[cfg(test)]
-mod tests {}
+mod tests {
+    use super::*;
+
+    static BASIC_DICTIONARY: &'static [&'static str] = &["a", "ab", "bab", "bc", "bca", "c", "caa"];
+
+    #[test]
+    fn basic() {
+        let mut nfa = NFA::from_dictionary(BASIC_DICTIONARY);
+        for &word in BASIC_DICTIONARY {
+            assert!(nfa.apply(word.as_bytes()));
+        }
+        assert!(!nfa.apply("bbc".as_bytes()));
+        assert!(!nfa.apply("abb".as_bytes()));
+    }
+
+    #[test]
+    fn basic_ignore_prefixes() {
+        let mut nfa = NFA::from_dictionary(BASIC_DICTIONARY);
+        nfa.ignore_prefixes();
+        for &word in BASIC_DICTIONARY {
+            assert!(nfa.apply(word.as_bytes()));
+        }
+        assert!(nfa.apply("bbc".as_bytes()));
+        assert!(!nfa.apply("abb".as_bytes()));
+    }
+
+    #[test]
+    fn basic_ignore_postfixes() {
+        let mut nfa = NFA::from_dictionary(BASIC_DICTIONARY);
+        nfa.ignore_postfixes();
+        for &word in BASIC_DICTIONARY {
+            assert!(nfa.apply(word.as_bytes()));
+        }
+        assert!(!nfa.apply("bbc".as_bytes()));
+        assert!(nfa.apply("abb".as_bytes()));
+    }
+
+    #[test]
+    fn basic_ignore_pre_postfixes() {
+        let mut nfa = NFA::from_dictionary(BASIC_DICTIONARY);
+        nfa.ignore_prefixes();
+        nfa.ignore_postfixes();
+        for &word in BASIC_DICTIONARY {
+            assert!(nfa.apply(word.as_bytes()));
+        }
+        assert!(nfa.apply("bbc".as_bytes()));
+        assert!(nfa.apply("abb".as_bytes()));
+    }
+
+    #[test]
+    fn basic_ignore_pre_postfixes_order() {
+        let mut nfa = NFA::from_dictionary(BASIC_DICTIONARY);
+        nfa.ignore_postfixes();
+        nfa.ignore_prefixes();
+        for &word in BASIC_DICTIONARY {
+            assert!(nfa.apply(word.as_bytes()));
+        }
+        assert!(nfa.apply("bbc".as_bytes()));
+        assert!(nfa.apply("abb".as_bytes()));
+    }
+
+    #[test]
+    fn basic_powerset() {
+        let mut nfa = NFA::from_dictionary(BASIC_DICTIONARY).powerset_construction();
+        for &word in BASIC_DICTIONARY {
+            assert!(nfa.apply(word.as_bytes()));
+        }
+        assert!(!nfa.apply("bbc".as_bytes()));
+        assert!(!nfa.apply("abb".as_bytes()));
+    }
+
+    #[test]
+    fn basic_powerset_ignore_prefixes() {
+        let mut nfa = NFA::from_dictionary(BASIC_DICTIONARY).powerset_construction();
+        nfa.ignore_prefixes();
+        for &word in BASIC_DICTIONARY {
+            assert!(nfa.apply(word.as_bytes()));
+        }
+        assert!(nfa.apply("bbc".as_bytes()));
+        assert!(!nfa.apply("abb".as_bytes()));
+    }
+
+    #[test]
+    fn basic_powerset_ignore_postfixes() {
+        let mut nfa = NFA::from_dictionary(BASIC_DICTIONARY).powerset_construction();
+        nfa.ignore_postfixes();
+        for &word in BASIC_DICTIONARY {
+            assert!(nfa.apply(word.as_bytes()));
+        }
+        assert!(!nfa.apply("bbc".as_bytes()));
+        assert!(nfa.apply("abb".as_bytes()));
+    }
+
+    #[test]
+    fn basic_powerset_ignore_pre_postfixes() {
+        let mut nfa = NFA::from_dictionary(BASIC_DICTIONARY).powerset_construction();
+        nfa.ignore_prefixes();
+        nfa.ignore_postfixes();
+        for &word in BASIC_DICTIONARY {
+            assert!(nfa.apply(word.as_bytes()));
+        }
+        assert!(nfa.apply("bbc".as_bytes()));
+        assert!(nfa.apply("abb".as_bytes()));
+    }
+
+    #[test]
+    fn basic_powerset_ignore_pre_postfixes_order() {
+        let mut nfa = NFA::from_dictionary(BASIC_DICTIONARY).powerset_construction();
+        nfa.ignore_postfixes();
+        nfa.ignore_prefixes();
+        for &word in BASIC_DICTIONARY {
+            assert!(nfa.apply(word.as_bytes()));
+        }
+        assert!(nfa.apply("bbc".as_bytes()));
+        assert!(nfa.apply("abb".as_bytes()));
+    }
+}

@@ -1,6 +1,3 @@
-pub const AUTO_START: usize = 0;
-pub const AUTO_STUCK: usize = 1;
-
 pub trait Automaton<Input: Ord> {
     type State;
 
@@ -38,7 +35,7 @@ pub struct Match {
     pub start: usize,
     /// The ending byte offset of the match in the search text.
     ///
-    /// (This can be re-capitulated with `pati` and adding the pattern's
+    /// (This can be re-capitulated with `pattern_no` and adding the pattern's
     /// length to `start`, but it is convenient to have it here.)
     pub end: usize,
 }
