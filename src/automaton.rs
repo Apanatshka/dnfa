@@ -6,9 +6,9 @@ pub trait Automaton<Input: Ord> {
 
     fn next_state(&self, state: &Self::State, input: &Input) -> Self::State;
 
-    fn has_match(&self, si: &Self::State, outi: usize) -> bool;
+    fn has_match(&self, si: &Self::State, patt_no_offset: usize) -> bool;
 
-    fn get_match(&self, si: &Self::State, outi: usize, texti: usize) -> Match;
+    fn get_match(&self, si: &Self::State, patt_no_offset: usize, text_offset: usize) -> Match;
 
     fn find<'i, 'a>(&'a self, s: &'i [Input]) -> Matches<'i, 'a, Input, Self>
         where Self: Sized
@@ -30,7 +30,7 @@ pub struct Match {
     ///
     /// This corresponds to the ordering in which the matched pattern was
     /// added to the automaton, starting at `0`.
-    pub pattern_no: usize,
+    pub patt_no: usize,
     /// The starting byte offset of the match in the search text.
     pub start: usize,
     /// The ending byte offset of the match in the search text.
