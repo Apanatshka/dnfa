@@ -15,7 +15,7 @@ fn main() {
     let mut nfa = NFA::from_dictionary(dictionary);
     nfa.ignore_prefixes();
     nfa.ignore_postfixes();
-    let dfa = nfa.powerset_construction().freeze().unwrap();
+    let dfa = nfa.powerset_construction().to_dfa().unwrap();
 //    println!("dfa");
 //    println!("{:?}", dfa);
     let ddfa = dfa.into_ddfa().unwrap();

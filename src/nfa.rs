@@ -98,10 +98,10 @@ impl NFA {
         }
     }
 
-    pub fn freeze(&self) -> Result<DFA, ()> {
+    pub fn to_dfa(&self) -> Result<DFA, ()> {
         let mut states = Vec::with_capacity(self.states.len());
         for state in &self.states {
-            states.push(try!(state.freeze()));
+            states.push(try!(state.to_dfa()));
         }
         let finals = BitVec::from_fn(self.states.len(), |i| self.states[i].is_final());
         Ok(DFA::new(states.into_boxed_slice(), finals))
@@ -310,7 +310,7 @@ impl NFAState {
         !self.pattern_ends.is_empty()
     }
 
-    fn freeze(&self) -> Result<DFAState, ()> {
+    fn to_dfa(&self) -> Result<DFAState, ()> {
         let mut transitions = vec![AUTO_STUCK; 256];
         for (&i, ref sns) in &self.transitions {
             if sns.len() != 1 {
