@@ -38,7 +38,7 @@ impl NFA {
         NFA { alphabet: alphabet, states: Vec::new(), dict: Vec::new() }
     }
 
-    pub fn from_dictionary(dict: &[&str]) -> Self {
+    pub fn from_dictionary(dict: Vec<&str>) -> Self {
         let num_states = dict.iter().fold(1, |sum, elem| sum + elem.len());
         let mut nfa = NFA {
             alphabet: Vec::new(),
@@ -316,7 +316,7 @@ mod tests {
 
     #[test]
     fn basic() {
-        let nfa = NFA::from_dictionary(BASIC_DICTIONARY);
+        let nfa = NFA::from_dictionary(BASIC_DICTIONARY.iter().cloned().collect());
         for (patt_no, &word) in BASIC_DICTIONARY.iter().enumerate() {
             assert!(nfa.apply(word.as_bytes()).contains(&patt_no));
         }
@@ -326,7 +326,7 @@ mod tests {
 
     #[test]
     fn basic_ignore_prefixes() {
-        let mut nfa = NFA::from_dictionary(BASIC_DICTIONARY);
+        let mut nfa = NFA::from_dictionary(BASIC_DICTIONARY.iter().cloned().collect());
         nfa.ignore_prefixes();
         for (patt_no, &word) in BASIC_DICTIONARY.iter().enumerate() {
             assert!(nfa.apply(word.as_bytes()).contains(&patt_no));
@@ -337,7 +337,7 @@ mod tests {
 
     #[test]
     fn basic_ignore_postfixes() {
-        let mut nfa = NFA::from_dictionary(BASIC_DICTIONARY);
+        let mut nfa = NFA::from_dictionary(BASIC_DICTIONARY.iter().cloned().collect());
         nfa.ignore_postfixes();
         for (patt_no, &word) in BASIC_DICTIONARY.iter().enumerate() {
             assert!(nfa.apply(word.as_bytes()).contains(&patt_no));
@@ -348,7 +348,7 @@ mod tests {
 
     #[test]
     fn basic_ignore_pre_postfixes() {
-        let mut nfa = NFA::from_dictionary(BASIC_DICTIONARY);
+        let mut nfa = NFA::from_dictionary(BASIC_DICTIONARY.iter().cloned().collect());
         nfa.ignore_prefixes();
         nfa.ignore_postfixes();
         for (patt_no, &word) in BASIC_DICTIONARY.iter().enumerate() {
@@ -360,7 +360,7 @@ mod tests {
 
     #[test]
     fn basic_ignore_pre_postfixes_order() {
-        let mut nfa = NFA::from_dictionary(BASIC_DICTIONARY);
+        let mut nfa = NFA::from_dictionary(BASIC_DICTIONARY.iter().cloned().collect());
         nfa.ignore_postfixes();
         nfa.ignore_prefixes();
         for (patt_no, &word) in BASIC_DICTIONARY.iter().enumerate() {
@@ -372,7 +372,7 @@ mod tests {
 
     #[test]
     fn basic_powerset() {
-        let nfa = NFA::from_dictionary(BASIC_DICTIONARY).powerset_construction();
+        let nfa = NFA::from_dictionary(BASIC_DICTIONARY.iter().cloned().collect()).powerset_construction();
         for (patt_no, &word) in BASIC_DICTIONARY.iter().enumerate() {
             assert!(nfa.apply(word.as_bytes()).contains(&patt_no));
         }
@@ -382,7 +382,7 @@ mod tests {
 
     #[test]
     fn basic_powerset_ignore_prefixes() {
-        let mut nfa = NFA::from_dictionary(BASIC_DICTIONARY).powerset_construction();
+        let mut nfa = NFA::from_dictionary(BASIC_DICTIONARY.iter().cloned().collect()).powerset_construction();
         nfa.ignore_prefixes();
         for (patt_no, &word) in BASIC_DICTIONARY.iter().enumerate() {
             assert!(nfa.apply(word.as_bytes()).contains(&patt_no));
@@ -393,7 +393,7 @@ mod tests {
 
     #[test]
     fn basic_powerset_ignore_postfixes() {
-        let mut nfa = NFA::from_dictionary(BASIC_DICTIONARY).powerset_construction();
+        let mut nfa = NFA::from_dictionary(BASIC_DICTIONARY.iter().cloned().collect()).powerset_construction();
         nfa.ignore_postfixes();
         for (patt_no, &word) in BASIC_DICTIONARY.iter().enumerate() {
             assert!(nfa.apply(word.as_bytes()).contains(&patt_no));
@@ -404,7 +404,7 @@ mod tests {
 
     #[test]
     fn basic_powerset_ignore_pre_postfixes() {
-        let mut nfa = NFA::from_dictionary(BASIC_DICTIONARY).powerset_construction();
+        let mut nfa = NFA::from_dictionary(BASIC_DICTIONARY.iter().cloned().collect()).powerset_construction();
         nfa.ignore_prefixes();
         nfa.ignore_postfixes();
         for (patt_no, &word) in BASIC_DICTIONARY.iter().enumerate() {
@@ -416,7 +416,7 @@ mod tests {
 
     #[test]
     fn basic_powerset_ignore_pre_postfixes_order() {
-        let mut nfa = NFA::from_dictionary(BASIC_DICTIONARY).powerset_construction();
+        let mut nfa = NFA::from_dictionary(BASIC_DICTIONARY.iter().cloned().collect()).powerset_construction();
         nfa.ignore_postfixes();
         nfa.ignore_prefixes();
         for (patt_no, &word) in BASIC_DICTIONARY.iter().enumerate() {

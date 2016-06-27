@@ -3,9 +3,9 @@ extern crate dnfa;
 use dnfa::nfa::{NFA};
 
 fn main() {
-    let dictionary = &["a", "ab", "bab", "bc", "bca", "c", "caa"];
+    let dictionary = vec!["a", "ab", "bab", "bc", "bca", "c", "caa"];
 
-    let mut nfa = NFA::from_dictionary(dictionary);
+    let mut nfa = NFA::from_dictionary(dictionary.clone());
 //    println!("nfa");
 //    println!("{}", nfa);
     let dnfa = nfa.powerset_construction();

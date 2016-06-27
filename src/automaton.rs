@@ -1,5 +1,7 @@
+use std::fmt::Debug;
+
 pub trait Automaton<Input: Ord> {
-    type State;
+    type State: Debug;
 
     fn start_state() -> Self::State;
     fn stuck_state() -> Self::State;
@@ -65,7 +67,8 @@ impl<'i, 'a, Input: Ord, A: Automaton<Input>> Iterator for Matches<'i, 'a, Input
             offset += 1;
         }
         if offset < self.input.len() {
-            self.offset = offset + 1;
+            offset += 1;
+            self.offset = offset;
             Some(self.aut.get_match(&self.state, 0, offset))
         } else {
             None
