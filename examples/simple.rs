@@ -6,19 +6,19 @@ fn main() {
     let dictionary = vec!["a", "ab", "bab", "bc", "bca", "c", "caa"];
 
     let mut nfa = NFA::from_dictionary(dictionary.clone());
-//    println!("nfa");
-//    println!("{}", nfa);
+    println!("nfa");
+    println!("{:?}", nfa);
     let dnfa = nfa.powerset_construction();
-//    println!("dnfa");
-//    println!("{}", dnfa);
+    println!("dnfa");
+    println!("{:?}", dnfa);
 
     let mut nfa = NFA::from_dictionary(dictionary);
     nfa.ignore_prefixes();
     nfa.ignore_postfixes();
     let dfa = nfa.powerset_construction().freeze().unwrap();
 //    println!("dfa");
-//    println!("{}", dfa);
+//    println!("{:?}", dfa);
     let ddfa = dfa.into_ddfa().unwrap();
 //    println!("ddfa");
-//    println!("{}", ddfa);
+//    println!("{:?}", ddfa);
 }

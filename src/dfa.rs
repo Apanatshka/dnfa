@@ -6,24 +6,21 @@ use std::fmt;
 
 use nfa::{AUTO_START, AUTO_STUCK};
 
-#[derive(Debug)]
 pub struct DFAState {
     transitions: Box<[usize]>,
 }
 
-#[derive(Debug)]
 pub struct DFA {
     states: Box<[DFAState]>,
     finals: BitVec,
 }
 
-#[derive(Debug)]
 pub struct DDFA {
     states: Box<[DDFAState]>,
 }
 
 // Living dangerously: raw pointers baby
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq)]
 struct DDFAState {
     transitions: Box<[*const DDFAState]>,
     is_final: bool,
@@ -78,7 +75,7 @@ impl DFA {
     }
 }
 
-impl fmt::Display for DFA {
+impl fmt::Debug for DFA {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         for (i, state) in (*self.states).into_iter().enumerate() {
             if i == AUTO_STUCK {
@@ -138,7 +135,7 @@ impl DDFA {
     }
 }
 
-impl fmt::Display for DDFA {
+impl fmt::Debug for DDFA {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let start = &self.states[0] as *const DDFAState;
         for (i, state) in (*self.states).into_iter().enumerate() {
