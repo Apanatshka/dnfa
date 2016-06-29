@@ -26,7 +26,7 @@ struct NFAState {
 pub struct NFA {
     alphabet: Vec<Input>,
     states: Vec<NFAState>,
-    dict: Vec<String>,
+    dict: Vec<Vec<u8>>,
 }
 
 impl NFA {
@@ -38,13 +38,14 @@ impl NFA {
         }
     }
 
-    pub fn from_dictionary(dict: Vec<&str>) -> Self {
-        // conservative estimation of required state-space
-        let num_states = dict.iter().fold(2, |sum, elem| sum + elem.len());
+    pub fn from_dictionary<P, I>(dict: I) -> Self
+        where P: AsRef<[u8]>,
+              I: IntoIterator<Item = P> + Clone
+    {
         let mut nfa = NFA {
             alphabet: Vec::new(),
-            states: Vec::with_capacity(num_states),
-            dict: dict.iter().cloned().map(|s| s.to_owned()).collect(),
+            states: Vec::new(),
+            dict: dict.clone().into_iter().map(|p| p.as_ref().to_vec()).collect(),
         };
         // the start and stuck states
         nfa.states.push(NFAState::new());
@@ -52,9 +53,9 @@ impl NFA {
 
         // collect the alphabet from the patterns while we're looping through them anyway
         let mut alphabet = BTreeSet::new();
-        for (pattern_no, &string) in dict.iter().enumerate() {
+        for (pattern_no, bytes) in dict.into_iter().enumerate() {
             let mut cur_state = AUTO_START;
-            for byte in string.bytes() {
+            for &byte in bytes.as_ref() {
                 alphabet.insert(byte);
                 // If there is a transition on this byte from the cur_state
                 //  just go there. (We can be sure there will be only one at this point)
