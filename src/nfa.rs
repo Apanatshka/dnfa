@@ -197,6 +197,76 @@ impl NFA {
         }
         dnfa
     }
+
+    pub fn dot(&self) -> String {
+        use std::fmt::Write;
+        let mut out = String::new();
+        macro_rules! w {
+            ($($tt:tt)*) => { {write!(out, $($tt)*)}.unwrap() }
+        }
+        fn bytes_to_comma_string<P, I>(iterable: I) -> String
+            where P: AsRef<[u8]>,
+                  I: IntoIterator<Item = P>
+        {
+            iterable.into_iter()
+                .map(|x| String::from_utf8_lossy(x.as_ref()).into_owned())
+                .collect::<Vec<String>>()
+                .join(", ")
+        }
+
+        w!(r#"
+digraph automaton {{
+    label=<<FONT POINT-SIZE="20">{}</FONT>>;
+    labelloc="l";
+    labeljust="l";
+    rankdir="LR";
+"#,
+           bytes_to_comma_string(self.dict.clone()));
+
+        for (from, state) in (*self.states).into_iter().enumerate() {
+            w!("    {}", from);
+            //            if from == AUTO_START {
+            //                w!(" (start)");
+            //            }
+            //            if from == AUTO_STUCK {
+            //                w!(" (stuck)");
+            //            }
+            if self.states[from].is_final() {
+                w!(" [peripheries=2]");
+            }
+            w!(";\n");
+            let flipped_transitions = flip_multimap(state.transitions.clone());
+            for (to, bytes) in flipped_transitions {
+                w!("    {} -> {} [label=\"{}\"",
+                   from,
+                   to,
+                   bytes.iter()
+                       .map(|&x| format!("{}", x as char))
+                       .collect::<Vec<String>>()
+                       .join(", "));
+                // Just guessing here, but it seems powerset-construction will preserve the
+                //  property that the original edges of the NFA are going from low to high state
+                //  numbers, in case of an NFA made from a dictionary anyway.  
+                if from >= to {
+                    w!(", style=dashed")
+                }
+                w!("];\n");
+            }
+        }
+        w!("}}");
+        out
+    }
+}
+
+fn flip_multimap<K: Ord + Clone, V: Ord>(multimap: BTreeMap<K, BTreeSet<V>>)
+                                         -> BTreeMap<V, BTreeSet<K>> {
+    let mut res = BTreeMap::new();
+    for (k, vs) in multimap {
+        for v in vs {
+            res.entry(v).or_insert_with(BTreeSet::new).insert(k.clone());
+        }
+    }
+    res
 }
 
 impl Automaton<Input> for NFA {
