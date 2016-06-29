@@ -249,51 +249,52 @@ impl Automaton<Input> for NFA {
 
 impl fmt::Debug for NFA {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        macro_rules! w {
+            ($($tt:tt)*) => { try!(write!(f, $($tt)*)) }
+        }
         for (i, state) in (*self.states).into_iter().enumerate() {
-            try!(write!(f, "{}", i));
+            w!("{}", i);
             if i == AUTO_START {
-                try!(write!(f, " (start)"));
+                w!(" (start)");
             }
             if i == AUTO_STUCK {
-                try!(write!(f, " (stuck)"));
+                w!(" (stuck)");
             }
             if self.states[i].is_final() {
-                try!(write!(f, " (final)"));
+                w!(" (final)");
             }
-            try!(write!(f, " -> ["));
+            w!(" -> [");
             let mut iter = state.transitions.iter();
             if let Some((&c1, tr1)) = iter.next() {
-                try!(writeln!(f, ""));
+                w!("\n");
                 let mut c1 = c1;
                 let mut tr1 = tr1;
                 loop {
                     if let Some((&c2, tr2)) = iter.next() {
                         if c2 == 0 || c1 == c2 - 1 {
-                            try!(writeln!(f, "  {:?} -> {:?},", c1 as u8 as char, tr1));
+                            w!("  {:?} -> {:?},\n", c1 as u8 as char, tr1);
                         } else {
-                            try!(writeln!(f,
-                                          "  [{:?}-{:?}] -> {:?},",
-                                          c1 as u8 as char,
-                                          (c2 - 1) as u8 as char,
-                                          tr1));
+                            w!("  [{:?}-{:?}] -> {:?},\n",
+                               c1 as u8 as char,
+                               (c2 - 1) as u8 as char,
+                               tr1);
                         }
                         c1 = c2;
                         tr1 = tr2;
                     } else {
                         if c1 == 255 {
-                            try!(writeln!(f, "  {:?} -> {:?},", c1 as u8 as char, tr1));
+                            w!("  {:?} -> {:?},\n", c1 as u8 as char, tr1);
                         } else {
-                            try!(writeln!(f,
-                                          "  [{:?}-{:?}] -> {:?},",
-                                          c1 as u8 as char,
-                                          255 as char,
-                                          tr1));
+                            w!("  [{:?}-{:?}] -> {:?},\n",
+                               c1 as u8 as char,
+                               255 as char,
+                               tr1);
                         }
                         break;
                     }
                 }
             }
-            try!(writeln!(f, "],"));
+            w!("],\n");
         }
         Ok(())
     }
