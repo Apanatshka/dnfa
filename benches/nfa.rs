@@ -31,26 +31,6 @@ fn bench_box_aut_no_match(
     b.iter(|| assert!(Automaton::find(aut, haystack.as_bytes()).next().is_none()));
 }
 
-//fn bench_full_aut_no_match(
-//    b: &mut Bencher,
-//    aut: NFA,
-//    haystack: &str,
-//) {
-//    let aut = aut.into_full();
-//    b.bytes = haystack.len() as u64;
-//    b.iter(|| assert!(aut.find(haystack.as_bytes()).next().is_none()));
-//}
-
-//fn bench_full_aut_overlapping_no_match(
-//    b: &mut Bencher,
-//    aut: NFA,
-//    haystack: &str,
-//) {
-//    let aut = aut.into_full();
-//    b.bytes = haystack.len() as u64;
-//    b.iter(|| assert!(aut.find_overlapping(haystack.as_bytes()).count() == 0));
-//}
-
 fn bench_naive_no_match<S>(b: &mut Bencher, needles: Vec<S>, haystack: &str)
         where S: Into<String> {
     b.bytes = haystack.len() as u64;
@@ -73,7 +53,6 @@ use test::Bencher;
 use super::{
     HAYSTACK_RANDOM, haystack_same,
     bench_aut_no_match, bench_box_aut_no_match,
-//    bench_full_aut_no_match, bench_full_aut_overlapping_no_match,
 };
 
 #[bench]
@@ -177,10 +156,6 @@ fn ac_ten_one_prefix_byte_random(b: &mut Bencher) {
 
 aut_benches!(dense, NFA::from_dictionary, bench_aut_no_match);
 aut_benches!(dense_boxed, NFA::from_dictionary, bench_box_aut_no_match);
-//aut_benches!(sparse, AcAutomaton::<&str, Sparse>::with_transitions,
-//             bench_aut_no_match);
-//aut_benches!(full, AcAutomaton::new, bench_full_aut_no_match);
-//aut_benches!(full_overlap, AcAutomaton::new, bench_full_aut_overlapping_no_match);
 
 // A naive multi-pattern search.
 // We use this to benchmark *throughput*, so it should never match anything.
