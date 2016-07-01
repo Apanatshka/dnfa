@@ -77,14 +77,24 @@ impl DFA {
 
 impl fmt::Debug for DFA {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        macro_rules! w {
+            ($($tt:tt)*) => { try!(write!(f, $($tt)*)) }
+        }
         for (i, state) in (*self.states).into_iter().enumerate() {
             if i == AUTO_STUCK {
-                try!(writeln!(f, "{} -- stuck state,", AUTO_STUCK));
+                w!("{} (stuck),\n", AUTO_STUCK);
                 continue;
             }
-            try!(write!(f, "{} -> [", i));
+            w!("{}", i);
+            if i == AUTO_START {
+                w!(" (start)");
+            }
+            if self.finals[i] {
+                w!(" (final)");
+            }
+            w!(": {{");
             if !state.transitions.is_empty() {
-                try!(writeln!(f, ""));
+                w!("\n");
             }
             let mut last_c = 0;
             let mut iter = (*state.transitions)
@@ -97,25 +107,17 @@ impl fmt::Debug for DFA {
                         continue;
                     }
                     if c == last_c {
-                        try!(writeln!(f, "  {:?} -> {:?},", c as u8 as char, tr));
+                        w!("  {:?}: {:?},\n", c as u8 as char, tr);
                     } else {
-                        try!(writeln!(f,
-                                      "  [{:?}-{:?}] -> {:?},",
-                                      last_c as u8 as char,
-                                      (c as u8) as char,
-                                      tr));
+                        w!("  [{:?}-{:?}]: {:?},\n",
+                           last_c as u8 as char,
+                           (c as u8) as char,
+                           tr);
                     }
                     last_c = c2;
                 }
             }
-            try!(write!(f, "]"));
-            if i == AUTO_START {
-                try!(write!(f, " -- start state"));
-            }
-            if self.finals[i] {
-                try!(write!(f, " -- final state"));
-            }
-            try!(writeln!(f, ","));
+            w!("}},\n");
         }
         Ok(())
     }
@@ -137,15 +139,25 @@ impl DDFA {
 
 impl fmt::Debug for DDFA {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        macro_rules! w {
+            ($($tt:tt)*) => { try!(write!(f, $($tt)*)) }
+        }
         let start = &self.states[0] as *const DDFAState;
         for (i, state) in (*self.states).into_iter().enumerate() {
             if i == AUTO_STUCK {
-                try!(writeln!(f, "{} -- stuck state,", AUTO_STUCK));
+                w!("{} (stuck),\n", AUTO_STUCK);
                 continue;
             }
-            try!(write!(f, "{} -> [", i));
+            w!("{}", i);
+            if i == AUTO_START {
+                w!(" (start)");
+            }
+            if state.is_final {
+                w!(" (final)");
+            }
+            w!(": {{");
             if !state.transitions.is_empty() {
-                try!(writeln!(f, ""));
+                w!("\n");
             }
             let mut last_c = 0;
             let mut iter = (*state.transitions)
@@ -159,25 +171,17 @@ impl fmt::Debug for DDFA {
                     }
                     let tr_no = (*tr as usize - start as usize) / mem::size_of::<DDFAState>();
                     if c == last_c {
-                        try!(writeln!(f, "  {:?} -> {:?},", c as u8 as char, tr_no));
+                        w!("  {:?}: {:?},\n", c as u8 as char, tr_no);
                     } else {
-                        try!(writeln!(f,
-                                      "  [{:?}-{:?}] -> {:?},",
-                                      last_c as u8 as char,
-                                      (c as u8) as char,
-                                      tr_no));
+                        w!("  [{:?}-{:?}]: {:?},\n",
+                           last_c as u8 as char,
+                           (c as u8) as char,
+                           tr_no);
                     }
                     last_c = c2;
                 }
             }
-            try!(write!(f, "]"));
-            if i == AUTO_START {
-                try!(write!(f, " -- start state"));
-            }
-            if state.is_final {
-                try!(write!(f, " -- final state"));
-            }
-            try!(writeln!(f, ","));
+            w!("}},\n");
         }
         Ok(())
     }

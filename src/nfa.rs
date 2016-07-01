@@ -241,15 +241,13 @@ impl NFA {
         macro_rules! w {
             ($($tt:tt)*) => { {write!(out, $($tt)*)}.unwrap() }
         }
-        fn bytes_to_comma_string<P, I>(iterable: I) -> String
-            where P: AsRef<[u8]>,
-                  I: IntoIterator<Item = P>
-        {
-            iterable.into_iter()
-                .map(|x| String::from_utf8_lossy(x.as_ref()).into_owned())
-                .collect::<Vec<String>>()
-                .join(", ")
-        }
+
+        let dict_comma_string = self.dict
+            .clone()
+            .into_iter()
+            .map(|x| String::from_utf8_lossy(x.as_ref()).into_owned())
+            .collect::<Vec<String>>()
+            .join(", ");
 
         w!(r#"
 digraph automaton {{
@@ -260,7 +258,7 @@ digraph automaton {{
     start [shape="none", label="", width=0];
     start -> 0;
 "#,
-           bytes_to_comma_string(self.dict.clone()));
+           dict_comma_string);
 
         let mut original_edges = BTreeSet::new();
 
@@ -268,7 +266,7 @@ digraph automaton {{
             let mut cur_state = AUTO_START;
             for &byte in bytes {
                 if let Some(nxt_states) = self.states[cur_state].transitions.get(&byte) {
-                    if nxt_states.len() > 0 {
+                    if !nxt_states.is_empty() {
                         let &nxt_state = nxt_states.iter().next().unwrap();
                         original_edges.insert((cur_state, nxt_state));
                         cur_state = nxt_state;
@@ -295,14 +293,14 @@ digraph automaton {{
                     continue;
                 }
                 w!("    {} -> {}", from, to);
-                if options.bold_dict_edges && original_edges.contains(&(from,to)) {
+                if options.bold_dict_edges && original_edges.contains(&(from, to)) {
                     w!(" [style=bold]");
                 }
                 w!(" [label=\"{}\"];\n",
-                       bytes.iter()
-                           .map(|&x| format!("{}", x as char))
-                           .collect::<Vec<String>>()
-                           .join(", "));
+                   bytes.iter()
+                       .map(|&x| format!("{}", x as char))
+                       .collect::<Vec<String>>()
+                       .join(", "));
             }
         }
 
@@ -395,38 +393,11 @@ impl fmt::Debug for NFA {
             if self.states[i].is_final() {
                 w!(" (final)");
             }
-            w!(" -> [");
-            let mut iter = state.transitions.iter();
-            if let Some((&c1, tr1)) = iter.next() {
-                w!("\n");
-                let mut c1 = c1;
-                let mut tr1 = tr1;
-                loop {
-                    if let Some((&c2, tr2)) = iter.next() {
-                        if c2 == 0 || c1 == c2 - 1 {
-                            w!("  {:?} -> {:?},\n", c1 as u8 as char, tr1);
-                        } else {
-                            w!("  [{:?}-{:?}] -> {:?},\n",
-                               c1 as u8 as char,
-                               (c2 - 1) as u8 as char,
-                               tr1);
-                        }
-                        c1 = c2;
-                        tr1 = tr2;
-                    } else {
-                        if c1 == 255 {
-                            w!("  {:?} -> {:?},\n", c1 as u8 as char, tr1);
-                        } else {
-                            w!("  [{:?}-{:?}] -> {:?},\n",
-                               c1 as u8 as char,
-                               255 as char,
-                               tr1);
-                        }
-                        break;
-                    }
-                }
-            }
-            w!("],\n");
+            let tr = state.transitions
+                .iter()
+                .map(|(&c, s)| (c as char, s.clone()))
+                .collect::<BTreeMap<char, BTreeSet<StateNumber>>>();
+            w!("{:#?},\n", tr);
         }
         Ok(())
     }
