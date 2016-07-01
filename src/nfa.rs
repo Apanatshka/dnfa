@@ -15,6 +15,7 @@ pub const AUTO_STUCK: usize = 1;
 pub type Input = u8;
 pub type StateNumber = usize;
 pub type PatternNumber = usize;
+pub type Depth = usize;
 
 #[derive(Clone, Default)]
 struct NFAState {
@@ -27,6 +28,7 @@ pub struct NFA {
     alphabet: Vec<Input>,
     states: Vec<NFAState>,
     dict: Vec<Vec<Input>>,
+    depth_map: BTreeMap<Depth, BTreeSet<StateNumber>>,
 }
 
 impl NFA {
@@ -35,6 +37,7 @@ impl NFA {
             alphabet: Vec::new(),
             states: Vec::new(),
             dict: Vec::new(),
+            depth_map: BTreeMap::new(),
         }
     }
 
@@ -46,6 +49,7 @@ impl NFA {
             alphabet: Vec::new(),
             states: Vec::new(),
             dict: dict.clone().into_iter().map(|p| p.as_ref().to_vec()).collect(),
+            depth_map: BTreeMap::new(),
         };
         // the start and stuck states
         nfa.states.push(NFAState::new());
@@ -82,6 +86,39 @@ impl NFA {
 
         nfa.alphabet = alphabet.into_iter().collect();
         nfa
+    }
+
+    pub fn add_depth_map(&mut self) {
+        if !self.depth_map.is_empty() {
+            return;
+        }
+        let states_len = self.states.len();
+
+        let mut depth = 0;
+
+        let mut visited = vec![false; states_len];
+        let mut cur_nodes = BTreeSet::new();
+        let mut nxt_nodes = BTreeSet::new();
+
+        cur_nodes.insert(AUTO_START);
+
+        while !cur_nodes.is_empty() {
+            for &node in &cur_nodes {
+                visited[node] = true;
+                for &byte in &self.alphabet {
+                    if let Some(states) = self.states[node].transitions.get(&byte) {
+                        nxt_nodes.extend(states.into_iter()
+                            .filter(|&&n| !visited[n])
+                            .cloned()
+                            .collect::<BTreeSet<StateNumber>>());
+                    }
+                }
+            }
+            self.depth_map.insert(depth, cur_nodes);
+            cur_nodes = nxt_nodes;
+            nxt_nodes = BTreeSet::new();
+            depth += 1;
+        }
     }
 
     pub fn ignore_prefixes(&mut self) {
@@ -132,6 +169,7 @@ impl NFA {
             alphabet: self.alphabet.clone(),
             states: vec![NFAState::new(); 2],
             dict: self.dict.clone(),
+            depth_map: BTreeMap::new(),
         };
         // Maps sets of state-numbers from the NFA, to state-numbers of the DNFA
         let mut states_map: HashMap<Vec<StateNumber>, StateNumber> = HashMap::new();
