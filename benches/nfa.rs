@@ -300,7 +300,7 @@ mod sherlock {
             #[bench]
             fn $name(b: &mut Bencher) {
                 let haystack = HAYSTACK_SHERLOCK;
-                let mut aut = NFA::from_dictionary($pats);//.into_full();
+                let mut aut = NFA::from_dictionary($pats);
                 aut.ignore_prefixes();
                 b.bytes = haystack.len() as u64;
                 b.iter(|| assert_eq!($count, aut.find(haystack.as_bytes()).count()));
