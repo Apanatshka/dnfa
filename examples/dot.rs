@@ -10,5 +10,9 @@ fn main() {
     let mut nfa = NFA::from_dictionary(dict);
     nfa.ignore_prefixes();
     let nfa = nfa.powerset_construction();
-    println!("{}", nfa.dot().trim());
+    let options = DotOptions {
+        bold_dict_edges: true,
+        suppress_stuck_state: true,
+    };
+    println!("{}", nfa.dot(options).trim());
 }

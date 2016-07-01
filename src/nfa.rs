@@ -26,7 +26,7 @@ struct NFAState {
 pub struct NFA {
     alphabet: Vec<Input>,
     states: Vec<NFAState>,
-    dict: Vec<Vec<u8>>,
+    dict: Vec<Vec<Input>>,
 }
 
 impl NFA {
@@ -134,9 +134,9 @@ impl NFA {
             dict: self.dict.clone(),
         };
         // Maps sets of state-numbers from the NFA, to state-numbers of the DNFA
-        let mut states_map: HashMap<Vec<usize>, usize> = HashMap::new();
+        let mut states_map: HashMap<Vec<StateNumber>, StateNumber> = HashMap::new();
         // Set of states that the NFA is in
-        let cur_states: BTreeSet<usize> = [AUTO_START].into_iter().cloned().collect();
+        let cur_states: BTreeSet<StateNumber> = [AUTO_START].into_iter().cloned().collect();
 
         dnfa.states[AUTO_START].pattern_ends = self.states[AUTO_START].pattern_ends.clone();
 
@@ -146,8 +146,6 @@ impl NFA {
         states_map.insert(vec![AUTO_STUCK], AUTO_STUCK);
         // start state only means we're at the start.
         states_map.insert(vec![AUTO_START], AUTO_START);
-
-        let empty_tr = BTreeSet::new();
 
         // The "recursive" part. We start in only the start state.
         // For every item (nfa-state-set, dfa-state), we go over every symbol in the alphabet.
@@ -164,14 +162,14 @@ impl NFA {
                 let mut nxt_states = BTreeSet::new();
                 let mut fin = BTreeSet::new();
                 for cur_state in cur_states.clone() {
-                    let states =
-                        self.states[cur_state].transitions.get(&input).unwrap_or(&empty_tr);
-                    nxt_states.extend(states);
-                    for &st in states {
-                        fin.extend(self.states[st].pattern_ends.clone());
+                    if let Some(states) = self.states[cur_state].transitions.get(&input) {
+                        nxt_states.extend(states);
+                        for &st in states {
+                            fin.extend(self.states[st].pattern_ends.clone());
+                        }
                     }
                 }
-                let nxt_states_vec = nxt_states.clone().into_iter().collect();
+                let nxt_states_vec: Vec<StateNumber> = nxt_states.clone().into_iter().collect();
 
                 let nxt_num = {
                     let dnfa_states = &mut dnfa.states;
@@ -198,7 +196,8 @@ impl NFA {
         dnfa
     }
 
-    pub fn dot(&self) -> String {
+    #[doc(hidden)]
+    pub fn dot(&self, options: DotOptions) -> String {
         use std::fmt::Write;
         let mut out = String::new();
         macro_rules! w {
@@ -220,44 +219,69 @@ digraph automaton {{
     labelloc="l";
     labeljust="l";
     rankdir="LR";
+    start [shape="none", label="", width=0];
+    start -> 0;
 "#,
            bytes_to_comma_string(self.dict.clone()));
 
+        let mut original_edges = BTreeSet::new();
+
+        for bytes in &self.dict {
+            let mut cur_state = AUTO_START;
+            for &byte in bytes {
+                if let Some(nxt_states) = self.states[cur_state].transitions.get(&byte) {
+                    if nxt_states.len() > 0 {
+                        let &nxt_state = nxt_states.iter().next().unwrap();
+                        original_edges.insert((cur_state, nxt_state));
+                        cur_state = nxt_state;
+                    }
+                }
+            }
+        }
+
         for (from, state) in (*self.states).into_iter().enumerate() {
+            if options.suppress_stuck_state && from == AUTO_STUCK {
+                continue;
+            }
             w!("    {}", from);
-            //            if from == AUTO_START {
-            //                w!(" (start)");
-            //            }
-            //            if from == AUTO_STUCK {
-            //                w!(" (stuck)");
-            //            }
+            if from == AUTO_STUCK {
+                w!(r#" [label="⊥"]"#);
+            }
             if self.states[from].is_final() {
                 w!(" [peripheries=2]");
             }
             w!(";\n");
             let flipped_transitions = flip_multimap(state.transitions.clone());
             for (to, bytes) in flipped_transitions {
-                w!("    {} -> {} [label=\"{}\"",
-                   from,
-                   to,
-                   bytes.iter()
-                       .map(|&x| format!("{}", x as char))
-                       .collect::<Vec<String>>()
-                       .join(", "));
-                // Just guessing here, but it seems powerset-construction will preserve the
-                //  property that the original edges of the NFA are going from low to high state
-                //  numbers, in case of an NFA made from a dictionary anyway.  
-                if from >= to {
-                    w!(", style=dashed")
+                if options.suppress_stuck_state && to == AUTO_STUCK {
+                    continue;
                 }
-                w!("];\n");
+                w!("    {} -> {}", from, to);
+                if options.bold_dict_edges && original_edges.contains(&(from,to)) {
+                    w!(" [style=bold]");
+                }
+                w!(" [label=\"{}\"];\n",
+                       bytes.iter()
+                           .map(|&x| format!("{}", x as char))
+                           .collect::<Vec<String>>()
+                           .join(", "));
             }
         }
+
         w!("}}");
         out
     }
 }
 
+#[doc(hidden)]
+#[derive(Default)]
+pub struct DotOptions {
+    pub bold_dict_edges: bool,
+    pub suppress_stuck_state: bool,
+}
+
+/// Flips a map that represents a non-injective multivalued function
+///  to a map that represents the inverse non-injective multivalued function
 fn flip_multimap<K: Ord + Clone, V: Ord>(multimap: BTreeMap<K, BTreeSet<V>>)
                                          -> BTreeMap<V, BTreeSet<K>> {
     let mut res = BTreeMap::new();
