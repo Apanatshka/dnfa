@@ -61,17 +61,12 @@ impl<'i, 'a, Input: Ord, A: Automaton<Input>> Iterator for Matches<'i, 'a, Input
         let mut offset = self.offset;
         while offset < self.input.len() {
             self.state = self.aut.next_state(&self.state, &self.input[offset]);
+            offset += 1;
             if self.aut.has_match(&self.state, 0) {
-                break;
+                self.offset = offset;
+                return Some(self.aut.get_match(&self.state, 0, offset));
             }
-            offset += 1;
         }
-        if offset < self.input.len() {
-            offset += 1;
-            self.offset = offset;
-            Some(self.aut.get_match(&self.state, 0, offset))
-        } else {
-            None
-        }
+        None
     }
 }
