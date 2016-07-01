@@ -5,18 +5,29 @@ use std::mem;
 use std::fmt;
 
 use nfa::{AUTO_START, AUTO_STUCK};
+use automaton::{Automaton, Match};
 
+pub type Input = u8;
+pub type StateNumber = usize;
+pub type PatternNumber = usize;
+
+#[derive(Default)]
 pub struct DFAState {
-    transitions: Box<[usize]>,
+    transitions: Box<[StateNumber]>,
+    pattern_ends: Box<[PatternNumber]>,
 }
 
+#[derive(Default)]
 pub struct DFA {
     states: Box<[DFAState]>,
     finals: BitVec,
+    dict: Vec<Vec<Input>>,
 }
 
+#[derive(Default)]
 pub struct DDFA {
     states: Box<[DDFAState]>,
+    dict: Vec<Vec<Input>>,
 }
 
 // Living dangerously: raw pointers baby
@@ -27,16 +38,20 @@ struct DDFAState {
 }
 
 impl DFAState {
-    pub fn new(transitions: Box<[usize]>) -> Self {
-        DFAState { transitions: transitions }
+    pub fn new(transitions: Box<[StateNumber]>, pattern_ends: Box<[PatternNumber]>) -> Self {
+        DFAState {
+            transitions: transitions,
+            pattern_ends: pattern_ends,
+        }
     }
 }
 
 impl DFA {
-    pub fn new(states: Box<[DFAState]>, finals: BitVec) -> Self {
+    pub fn new(states: Box<[DFAState]>, finals: BitVec, dict: Vec<Vec<Input>>) -> Self {
         DFA {
             states: states,
             finals: finals,
+            dict: dict,
         }
     }
 
@@ -60,7 +75,10 @@ impl DFA {
             states[i].transitions = v.into_boxed_slice();
             states[i].is_final = self.finals[i];
         }
-        Ok(DDFA { states: states })
+        Ok(DDFA {
+            states: states,
+            dict: self.dict,
+        })
     }
 
     pub fn apply(&self, input: &[u8]) -> bool {
@@ -72,6 +90,39 @@ impl DFA {
             }
         }
         self.finals[cur_state]
+    }
+}
+
+impl Automaton<Input> for DFA {
+    type State = StateNumber;
+
+
+    fn start_state() -> Self::State {
+        AUTO_START
+    }
+
+    fn stuck_state() -> Self::State {
+        AUTO_STUCK
+    }
+
+    #[inline]
+    fn next_state(&self, &state: &Self::State, &input: &Input) -> Self::State {
+        self.states[state].transitions[input as usize]
+    }
+
+    #[inline]
+    fn has_match(&self, &state: &Self::State, patt_no_offset: usize) -> bool {
+        patt_no_offset < self.states[state].pattern_ends.len()
+    }
+
+    #[inline]
+    fn get_match(&self, &state: &Self::State, patt_no_offset: usize, text_offset: usize) -> Match {
+        let patt_no = self.states[state].pattern_ends[patt_no_offset];
+        Match {
+            patt_no: patt_no,
+            start: text_offset - self.dict[patt_no].len(),
+            end: text_offset,
+        }
     }
 }
 

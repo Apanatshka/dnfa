@@ -136,13 +136,13 @@ impl NFA {
         }
     }
 
-    pub fn to_dfa(&self) -> Result<DFA, ()> {
-        let mut states = Vec::with_capacity(self.states.len());
-        for state in &self.states {
-            states.push(try!(state.to_dfa()));
-        }
+    pub fn into_dfa(self) -> Result<DFA, ()> {
         let finals = BitVec::from_fn(self.states.len(), |i| self.states[i].is_final());
-        Ok(DFA::new(states.into_boxed_slice(), finals))
+        let mut states = Vec::with_capacity(self.states.len());
+        for state in self.states {
+            states.push(try!(state.into_dfa()));
+        }
+        Ok(DFA::new(states.into_boxed_slice(), finals, self.dict))
     }
 
     pub fn apply(&self, input: &[Input]) -> Vec<PatternNumber> {
@@ -415,7 +415,7 @@ impl NFAState {
         !self.pattern_ends.is_empty()
     }
 
-    fn to_dfa(&self) -> Result<DFAState, ()> {
+    fn into_dfa(self) -> Result<DFAState, ()> {
         let mut transitions = vec![AUTO_STUCK; 256];
         for (&i, ref sns) in &self.transitions {
             if sns.len() != 1 {
@@ -424,7 +424,8 @@ impl NFAState {
             let &sn = sns.iter().next().unwrap();
             transitions[i as usize] = sn;
         }
-        Ok(DFAState::new(transitions.into_boxed_slice()))
+        Ok(DFAState::new(transitions.into_boxed_slice(),
+                         self.pattern_ends.into_boxed_slice()))
     }
 }
 
