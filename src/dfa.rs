@@ -126,54 +126,6 @@ impl Automaton<Input> for DFA {
     }
 }
 
-impl fmt::Debug for DFA {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        macro_rules! w {
-            ($($tt:tt)*) => { try!(write!(f, $($tt)*)) }
-        }
-        for (i, state) in (*self.states).into_iter().enumerate() {
-            if i == AUTO_STUCK {
-                w!("{} (stuck),\n", AUTO_STUCK);
-                continue;
-            }
-            w!("{}", i);
-            if i == AUTO_START {
-                w!(" (start)");
-            }
-            if self.finals[i] {
-                w!(" (final)");
-            }
-            w!(": {{");
-            if !state.transitions.is_empty() {
-                w!("\n");
-            }
-            let mut last_c = 0;
-            let mut iter = (*state.transitions)
-                .into_iter()
-                .enumerate()
-                .peekable();
-            while let Some((c, tr)) = iter.next() {
-                if let Some(&(c2, tr2)) = iter.peek() {
-                    if tr == tr2 {
-                        continue;
-                    }
-                    if c == last_c {
-                        w!("  {:?}: {:?},\n", c as u8 as char, tr);
-                    } else {
-                        w!("  [{:?}-{:?}]: {:?},\n",
-                           last_c as u8 as char,
-                           (c as u8) as char,
-                           tr);
-                    }
-                    last_c = c2;
-                }
-            }
-            w!("}},\n");
-        }
-        Ok(())
-    }
-}
-
 impl DDFA {
     pub fn apply(&self, input: &[u8]) -> bool {
         let mut cur_state: *const DDFAState = &self.states[AUTO_START];
@@ -188,55 +140,92 @@ impl DDFA {
     }
 }
 
-impl fmt::Debug for DDFA {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        macro_rules! w {
-            ($($tt:tt)*) => { try!(write!(f, $($tt)*)) }
-        }
-        let start = &self.states[0] as *const DDFAState;
-        for (i, state) in (*self.states).into_iter().enumerate() {
-            if i == AUTO_STUCK {
-                w!("{} (stuck),\n", AUTO_STUCK);
-                continue;
-            }
-            w!("{}", i);
-            if i == AUTO_START {
-                w!(" (start)");
-            }
-            if state.is_final {
-                w!(" (final)");
-            }
-            w!(": {{");
-            if !state.transitions.is_empty() {
-                w!("\n");
-            }
-            let mut last_c = 0;
-            let mut iter = (*state.transitions)
-                .into_iter()
-                .enumerate()
-                .peekable();
-            while let Some((c, tr)) = iter.next() {
-                if let Some(&(c2, tr2)) = iter.peek() {
-                    if tr == tr2 {
+// The Debug::fmt implementation for DFA and DDFA are extremely similar. The only differences are in
+//  computing the finality of a state and computing the index of a state in the states array.
+// Therefore we share these with a macro:
+macro_rules! debug_impl {
+    ($struct_name:ident, $compute_finality:item, $compute_start:item, $compute_tr_no:item) => {
+        impl fmt::Debug for $struct_name {
+            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                $compute_finality
+                $compute_start
+                $compute_tr_no
+                let start = compute_start(&self);
+                for (i, state) in (*self.states).into_iter().enumerate() {
+                    if i == AUTO_STUCK {
+                        try!(write!(f, "{} (stuck),\n", AUTO_STUCK));
                         continue;
                     }
-                    let tr_no = (*tr as usize - start as usize) / mem::size_of::<DDFAState>();
-                    if c == last_c {
-                        w!("  {:?}: {:?},\n", c as u8 as char, tr_no);
-                    } else {
-                        w!("  [{:?}-{:?}]: {:?},\n",
-                           last_c as u8 as char,
-                           (c as u8) as char,
-                           tr_no);
+                    try!(write!(f, "{}", i));
+                    if i == AUTO_START {
+                        try!(write!(f, " (start)"));
                     }
-                    last_c = c2;
+                    if compute_finality(&self, state, i) {
+                        try!(write!(f, " (final)"));
+                    }
+                    try!(write!(f, ": {{"));
+                    if !state.transitions.is_empty() {
+                        try!(write!(f, "\n"));
+                    }
+                    let mut last_c = 0;
+                    let mut iter = (*state.transitions)
+                        .into_iter()
+                        .enumerate()
+                        .peekable();
+                    while let Some((c, tr)) = iter.next() {
+                        if let Some(&(c2, tr2)) = iter.peek() {
+                            if tr == tr2 {
+                                continue;
+                            }
+                            let tr_no = compute_tr_no(tr, start);
+                            if c == last_c {
+                                try!(write!(f, "  {:?}: {:?},\n", c as u8 as char, tr_no));
+                            } else {
+                                try!(write!(f, "  [{:?}-{:?}]: {:?},\n",
+                                   last_c as u8 as char,
+                                   (c as u8) as char,
+                                   tr_no));
+                            }
+                            last_c = c2;
+                        }
+                    }
+                    try!(write!(f, "}},\n"));
                 }
+                Ok(())
             }
-            w!("}},\n");
         }
-        Ok(())
     }
 }
+
+debug_impl!(
+    DFA,
+    #[allow(unused_variables)]
+    fn compute_finality(dfa: &DFA, state: &DFAState, i: usize) -> bool {
+        dfa.finals[i]
+    },
+    #[allow(unused_variables)]
+    fn compute_start(dfa: &DFA) -> () {
+        ()
+    },
+    #[allow(unused_variables)]
+    fn compute_tr_no(tr: &StateNumber, start: ()) -> &StateNumber {
+        tr
+    }
+);
+
+debug_impl!(
+    DDFA,
+    #[allow(unused_variables)]
+    fn compute_finality(ddfa: &DDFA, state: &DDFAState, i: usize) -> bool {
+        state.is_final
+    },
+    fn compute_start(ddfa: &DDFA) -> *const DDFAState {
+        &ddfa.states[0] as *const DDFAState
+    },
+    fn compute_tr_no(tr: &*const DDFAState, start: *const DDFAState) -> usize {
+        (*tr as usize - start as usize) / mem::size_of::<DDFAState>()
+    }
+);
 
 #[cfg(test)]
 mod tests {}
