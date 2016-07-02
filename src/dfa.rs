@@ -14,7 +14,7 @@ pub type PatternNumber = usize;
 #[derive(Default)]
 pub struct DFAState {
     transitions: Box<[StateNumber]>,
-    pattern_ends: Box<[PatternNumber]>,
+    pattern_ends: Vec<PatternNumber>,
 }
 
 #[derive(Default)]
@@ -24,7 +24,6 @@ pub struct DFA {
     dict: Vec<Vec<Input>>,
 }
 
-#[derive(Default)]
 pub struct DDFA {
     states: Box<[DDFAState]>,
     dict: Vec<Vec<Input>>,
@@ -32,13 +31,14 @@ pub struct DDFA {
 
 // Living dangerously: raw pointers baby
 #[derive(Clone, PartialEq)]
-struct DDFAState {
+pub struct DDFAState {
     transitions: Box<[*const DDFAState]>,
+    pattern_ends: Vec<PatternNumber>,
     is_final: bool,
 }
 
 impl DFAState {
-    pub fn new(transitions: Box<[StateNumber]>, pattern_ends: Box<[PatternNumber]>) -> Self {
+    pub fn new(transitions: Box<[StateNumber]>, pattern_ends: Vec<PatternNumber>) -> Self {
         DFAState {
             transitions: transitions,
             pattern_ends: pattern_ends,
@@ -56,8 +56,8 @@ impl DFA {
     }
 
     pub fn into_ddfa(self) -> Result<DDFA, ()> {
-        let len = self.states.len();
-        let mut states = vec![DDFAState { transitions: Box::new([]), is_final: false }; len]
+        let states_len = self.states.len();
+        let mut states = vec![DDFAState { transitions: Box::new([]), pattern_ends: Vec::new(), is_final: false }; states_len]
             .into_boxed_slice();
 
         let states_start: *mut DDFAState = (*states).as_mut_ptr();
@@ -65,7 +65,7 @@ impl DFA {
         for (i, ref st) in self.states.iter().enumerate() {
             let mut v: Vec<*const DDFAState> = Vec::with_capacity(st.transitions.len());
             for &offset in st.transitions.iter() {
-                if offset >= len {
+                if offset >= states_len {
                     return Err(());
                 }
                 unsafe {
@@ -73,6 +73,7 @@ impl DFA {
                 }
             }
             states[i].transitions = v.into_boxed_slice();
+            states[i].pattern_ends = self.states[i].pattern_ends.clone();
             states[i].is_final = self.finals[i];
         }
         Ok(DDFA {
@@ -97,11 +98,11 @@ impl Automaton<Input> for DFA {
     type State = StateNumber;
 
 
-    fn start_state() -> Self::State {
+    fn start_state(&self) -> Self::State {
         AUTO_START
     }
 
-    fn stuck_state() -> Self::State {
+    fn stuck_state(&self) -> Self::State {
         AUTO_STUCK
     }
 
@@ -137,6 +138,38 @@ impl DDFA {
             }
         }
         unsafe { (*cur_state).is_final }
+    }
+}
+
+impl Automaton<Input> for DDFA {
+    type State = *const DDFAState;
+
+    fn start_state(&self) -> Self::State {
+        &self.states[AUTO_START]
+    }
+
+    fn stuck_state(&self) -> Self::State {
+        &self.states[AUTO_STUCK]
+    }
+
+    #[inline]
+    fn next_state(&self, &state: &Self::State, &input: &Input) -> Self::State {
+        unsafe { (*state).transitions[input as usize] }
+    }
+
+    #[inline]
+    fn has_match(&self, &state: &Self::State, patt_no_offset: usize) -> bool {
+        patt_no_offset < unsafe { (*state).pattern_ends.len() }
+    }
+
+    #[inline]
+    fn get_match(&self, &state: &Self::State, patt_no_offset: usize, text_offset: usize) -> Match {
+        let patt_no = unsafe { (*state).pattern_ends[patt_no_offset] };
+        Match {
+            patt_no: patt_no,
+            start: text_offset - self.dict[patt_no].len(),
+            end: text_offset,
+        }
     }
 }
 
@@ -220,7 +253,7 @@ debug_impl!(
         state.is_final
     },
     fn compute_start(ddfa: &DDFA) -> *const DDFAState {
-        &ddfa.states[0] as *const DDFAState
+        &ddfa.states[AUTO_START] as *const DDFAState
     },
     fn compute_tr_no(tr: &*const DDFAState, start: *const DDFAState) -> usize {
         (*tr as usize - start as usize) / mem::size_of::<DDFAState>()

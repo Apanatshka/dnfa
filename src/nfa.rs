@@ -332,12 +332,11 @@ fn flip_multimap<K: Ord + Clone, V: Ord>(multimap: BTreeMap<K, BTreeSet<V>>)
 impl Automaton<Input> for NFA {
     type State = BTreeSet<StateNumber>;
 
-
-    fn start_state() -> Self::State {
+    fn start_state(&self) -> Self::State {
         [AUTO_START].iter().cloned().collect()
     }
 
-    fn stuck_state() -> Self::State {
+    fn stuck_state(&self) -> Self::State {
         [AUTO_STUCK].iter().cloned().collect()
     }
 
@@ -425,7 +424,7 @@ impl NFAState {
             transitions[i as usize] = sn;
         }
         Ok(DFAState::new(transitions.into_boxed_slice(),
-                         self.pattern_ends.into_boxed_slice()))
+                         self.pattern_ends))
     }
 }
 

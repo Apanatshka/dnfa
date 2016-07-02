@@ -3,8 +3,8 @@ use std::fmt::Debug;
 pub trait Automaton<Input: Ord> {
     type State: Debug;
 
-    fn start_state() -> Self::State;
-    fn stuck_state() -> Self::State;
+    fn start_state(&self) -> Self::State;
+    fn stuck_state(&self) -> Self::State;
 
     fn next_state(&self, state: &Self::State, input: &Input) -> Self::State;
 
@@ -19,7 +19,7 @@ pub trait Automaton<Input: Ord> {
             aut: self,
             input: s,
             offset: 0,
-            state: Self::start_state(),
+            state: Self::start_state(self),
         }
     }
 }
