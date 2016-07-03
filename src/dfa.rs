@@ -11,13 +11,11 @@ pub type Input = u8;
 pub type StateNumber = usize;
 pub type PatternNumber = usize;
 
-#[derive(Default)]
 pub struct DFAState {
     transitions: Box<[StateNumber]>,
     pattern_ends: Vec<PatternNumber>,
 }
 
-#[derive(Default)]
 pub struct DFA {
     states: Box<[DFAState]>,
     finals: BitVec,
@@ -57,7 +55,7 @@ impl DFA {
 
     pub fn into_ddfa(self) -> Result<DDFA, ()> {
         let states_len = self.states.len();
-        let mut states = vec![DDFAState { transitions: Box::new([]), pattern_ends: Vec::new(), is_final: false }; states_len]
+        let mut states = vec![DDFAState::new(Box::new([]), Vec::new(), false); states_len]
             .into_boxed_slice();
 
         let states_start: *mut DDFAState = (*states).as_mut_ptr();
@@ -76,13 +74,10 @@ impl DFA {
             states[i].pattern_ends = self.states[i].pattern_ends.clone();
             states[i].is_final = self.finals[i];
         }
-        Ok(DDFA {
-            states: states,
-            dict: self.dict,
-        })
+        Ok(DDFA::new(states, self.dict))
     }
 
-    pub fn apply(&self, input: &[u8]) -> bool {
+    pub fn apply(&self, input: &[u8]) -> Vec<PatternNumber> {
         let mut cur_state = AUTO_START;
         for &byte in input {
             cur_state = self.states[cur_state].transitions[byte as usize];
@@ -90,13 +85,12 @@ impl DFA {
                 break;
             }
         }
-        self.finals[cur_state]
+        self.states[cur_state].pattern_ends.clone()
     }
 }
 
 impl Automaton<Input> for DFA {
     type State = StateNumber;
-
 
     fn start_state(&self) -> Self::State {
         AUTO_START
@@ -127,8 +121,28 @@ impl Automaton<Input> for DFA {
     }
 }
 
+impl DDFAState {
+    fn new(transitions: Box<[*const DDFAState]>,
+           pattern_ends: Vec<PatternNumber>,
+           is_final: bool)
+           -> Self {
+        DDFAState {
+            transitions: transitions,
+            pattern_ends: pattern_ends,
+            is_final: is_final,
+        }
+    }
+}
+
 impl DDFA {
-    pub fn apply(&self, input: &[u8]) -> bool {
+    fn new(states: Box<[DDFAState]>, dict: Vec<Vec<Input>>) -> Self {
+        DDFA {
+            states: states,
+            dict: dict,
+        }
+    }
+
+    pub fn apply(&self, input: &[u8]) -> Vec<PatternNumber> {
         let mut cur_state: *const DDFAState = &self.states[AUTO_START];
         let stuck = &self.states[AUTO_STUCK];
         for &byte in input {
@@ -137,7 +151,7 @@ impl DDFA {
                 break;
             }
         }
-        unsafe { (*cur_state).is_final }
+        unsafe { (*cur_state).pattern_ends.clone() }
     }
 }
 
@@ -261,4 +275,93 @@ debug_impl!(
 );
 
 #[cfg(test)]
-mod tests {}
+mod tests {
+    use nfa::NFA;
+
+    static BASIC_DICTIONARY: &'static [&'static str] = &["a", "ab", "bab", "bc", "bca", "c", "caa"];
+
+    #[test]
+    fn basic_ignore_prefixes() {
+        let mut nfa = NFA::from_dictionary(BASIC_DICTIONARY);
+        nfa.ignore_prefixes();
+        let dfa = nfa.powerset_construction().into_dfa().unwrap();
+        for (patt_no, &word) in BASIC_DICTIONARY.iter().enumerate() {
+            assert!(dfa.apply(word.as_bytes()).contains(&patt_no));
+        }
+        assert!(!dfa.apply("bbc".as_bytes()).is_empty());
+        assert!(dfa.apply("abb".as_bytes()).is_empty());
+    }
+
+    #[test]
+    fn basic_ignore_postfixes() {
+        let mut nfa = NFA::from_dictionary(BASIC_DICTIONARY);
+        nfa.ignore_postfixes();
+        let dfa = nfa.powerset_construction().into_dfa().unwrap();
+        for (patt_no, &word) in BASIC_DICTIONARY.iter().enumerate() {
+            assert!(dfa.apply(word.as_bytes()).contains(&patt_no));
+        }
+        assert!(dfa.apply("bbc".as_bytes()).is_empty());
+        assert!(!dfa.apply("abb".as_bytes()).is_empty());
+    }
+
+    #[test]
+    fn basic_ignore_pre_postfixes() {
+        let mut nfa = NFA::from_dictionary(BASIC_DICTIONARY);
+        nfa.ignore_prefixes();
+        nfa.ignore_postfixes();
+        let dfa = nfa.powerset_construction().into_dfa().unwrap();
+        for (patt_no, &word) in BASIC_DICTIONARY.iter().enumerate() {
+            assert!(dfa.apply(word.as_bytes()).contains(&patt_no));
+        }
+        assert!(!dfa.apply("bbc".as_bytes()).is_empty());
+        assert!(!dfa.apply("abb".as_bytes()).is_empty());
+    }
+
+    #[test]
+    fn basic_ignore_pre_postfixes_order() {
+        let mut nfa = NFA::from_dictionary(BASIC_DICTIONARY);
+        nfa.ignore_postfixes();
+        nfa.ignore_prefixes();
+        let dfa = nfa.powerset_construction().into_dfa().unwrap();
+        for (patt_no, &word) in BASIC_DICTIONARY.iter().enumerate() {
+            assert!(dfa.apply(word.as_bytes()).contains(&patt_no));
+        }
+        assert!(!dfa.apply("bbc".as_bytes()).is_empty());
+        assert!(!dfa.apply("abb".as_bytes()).is_empty());
+    }
+
+    use automaton::Automaton;
+    use std::iter;
+
+    fn haystack_same(letter: char) -> String {
+        iter::repeat(letter).take(10000).collect()
+    }
+
+    #[test]
+    fn from_bench_basic_one_byte() {
+        let needles = vec!["a"];
+        let haystack = &haystack_same('z');
+
+        let mut nfa = NFA::from_dictionary(needles);
+        nfa.ignore_prefixes();
+        let dfa = nfa.powerset_construction().into_dfa().unwrap();
+
+        assert!(dfa.find( haystack.as_bytes()).next().is_none());
+    }
+
+    static HAYSTACK_SHERLOCK: &'static str = include_str!("../benches/sherlock.txt");
+
+    #[test]
+    fn from_bench_sherlock_alt1() {
+        let needles = vec!["Sherlock", "Street"];
+        let count = 158;
+
+        let haystack = HAYSTACK_SHERLOCK;
+
+        let mut nfa = NFA::from_dictionary(needles);
+        nfa.ignore_prefixes();
+        let dfa = nfa.powerset_construction().into_dfa().unwrap();
+
+        assert_eq!(count, dfa.find(haystack.as_bytes()).count());
+    }
+}

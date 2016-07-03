@@ -122,16 +122,22 @@ impl NFA {
     }
 
     pub fn ignore_prefixes(&mut self) {
-        for (_, transition) in &mut self.states[AUTO_START].transitions {
-            transition.insert(AUTO_START);
+        self.alphabet = (0...255).collect();
+        for &byte in &self.alphabet {
+            self.states[AUTO_START]
+                .transitions
+                .entry(byte)
+                .or_insert_with(BTreeSet::new)
+                .insert(AUTO_START);
         }
     }
 
     pub fn ignore_postfixes(&mut self) {
+        self.alphabet = (0...255).collect();
         let finals = self.states.iter_mut().enumerate().filter(|&(_, ref st)| st.is_final());
         for (fin, state) in finals {
-            for (_, transition) in &mut state.transitions {
-                transition.insert(fin);
+            for &byte in &self.alphabet {
+                state.transitions.entry(byte).or_insert_with(BTreeSet::new).insert(fin);
             }
         }
     }
@@ -199,7 +205,7 @@ impl NFA {
             for &input in &dnfa.alphabet {
                 let mut nxt_states = BTreeSet::new();
                 let mut fin = BTreeSet::new();
-                for cur_state in cur_states.clone() {
+                for &cur_state in &cur_states {
                     if let Some(states) = self.states[cur_state].transitions.get(&input) {
                         nxt_states.extend(states);
                         for &st in states {
@@ -266,8 +272,7 @@ digraph automaton {{
             let mut cur_state = AUTO_START;
             for &byte in bytes {
                 if let Some(nxt_states) = self.states[cur_state].transitions.get(&byte) {
-                    if !nxt_states.is_empty() {
-                        let &nxt_state = nxt_states.iter().next().unwrap();
+                    if let Some(&nxt_state) = nxt_states.iter().next() {
                         original_edges.insert((cur_state, nxt_state));
                         cur_state = nxt_state;
                     }
@@ -297,15 +302,32 @@ digraph automaton {{
                     w!(" [style=bold]");
                 }
                 w!(" [label=\"{}\"];\n",
-                   bytes.iter()
-                       .map(|&x| format!("{}", x as char))
-                       .collect::<Vec<String>>()
+                   implode_ranges(bytes)
                        .join(", "));
             }
         }
 
         w!("}}");
         out
+    }
+}
+
+fn implode_ranges(bytes: BTreeSet<u8>) -> Vec<String> {
+    let mut res = Vec::new();
+    let mut i = bytes.iter();
+    if let Some(&start) = i.next() {
+        let mut start = start;
+        let mut prev = start;
+        for &cur in i {
+            if cur-1 != prev {
+                res.push(format!("{:?}-{:?}", start as char, prev as char));
+                start = cur;
+            }
+            prev = cur;
+        }
+        res
+    } else {
+        unreachable!();
     }
 }
 
@@ -344,8 +366,10 @@ impl Automaton<Input> for NFA {
     fn next_state(&self, states: &Self::State, input: &Input) -> Self::State {
         let mut nxt_states = BTreeSet::new();
         for &state in states {
-            for &nxt_state in self.states[state].transitions.get(input).unwrap() {
-                nxt_states.insert(nxt_state);
+            if let Some(states) = self.states[state].transitions.get(input) {
+                for &nxt_state in states {
+                    nxt_states.insert(nxt_state);
+                }
             }
         }
         nxt_states
@@ -420,11 +444,12 @@ impl NFAState {
             if sns.len() != 1 {
                 return Err(());
             }
-            let &sn = sns.iter().next().unwrap();
-            transitions[i as usize] = sn;
+            match sns.iter().next() {
+                Some(&sn) => transitions[i as usize] = sn,
+                None => unreachable!(),
+            }
         }
-        Ok(DFAState::new(transitions.into_boxed_slice(),
-                         self.pattern_ends))
+        Ok(DFAState::new(transitions.into_boxed_slice(), self.pattern_ends))
     }
 }
 
@@ -436,7 +461,7 @@ mod tests {
 
     #[test]
     fn basic() {
-        let nfa = NFA::from_dictionary(BASIC_DICTIONARY.iter().cloned().collect());
+        let nfa = NFA::from_dictionary(BASIC_DICTIONARY);
         for (patt_no, &word) in BASIC_DICTIONARY.iter().enumerate() {
             assert!(nfa.apply(word.as_bytes()).contains(&patt_no));
         }
@@ -446,7 +471,7 @@ mod tests {
 
     #[test]
     fn basic_ignore_prefixes() {
-        let mut nfa = NFA::from_dictionary(BASIC_DICTIONARY.iter().cloned().collect());
+        let mut nfa = NFA::from_dictionary(BASIC_DICTIONARY);
         nfa.ignore_prefixes();
         for (patt_no, &word) in BASIC_DICTIONARY.iter().enumerate() {
             assert!(nfa.apply(word.as_bytes()).contains(&patt_no));
@@ -457,7 +482,7 @@ mod tests {
 
     #[test]
     fn basic_ignore_postfixes() {
-        let mut nfa = NFA::from_dictionary(BASIC_DICTIONARY.iter().cloned().collect());
+        let mut nfa = NFA::from_dictionary(BASIC_DICTIONARY);
         nfa.ignore_postfixes();
         for (patt_no, &word) in BASIC_DICTIONARY.iter().enumerate() {
             assert!(nfa.apply(word.as_bytes()).contains(&patt_no));
@@ -468,7 +493,7 @@ mod tests {
 
     #[test]
     fn basic_ignore_pre_postfixes() {
-        let mut nfa = NFA::from_dictionary(BASIC_DICTIONARY.iter().cloned().collect());
+        let mut nfa = NFA::from_dictionary(BASIC_DICTIONARY);
         nfa.ignore_prefixes();
         nfa.ignore_postfixes();
         for (patt_no, &word) in BASIC_DICTIONARY.iter().enumerate() {
@@ -480,7 +505,7 @@ mod tests {
 
     #[test]
     fn basic_ignore_pre_postfixes_order() {
-        let mut nfa = NFA::from_dictionary(BASIC_DICTIONARY.iter().cloned().collect());
+        let mut nfa = NFA::from_dictionary(BASIC_DICTIONARY);
         nfa.ignore_postfixes();
         nfa.ignore_prefixes();
         for (patt_no, &word) in BASIC_DICTIONARY.iter().enumerate() {
@@ -492,8 +517,7 @@ mod tests {
 
     #[test]
     fn basic_powerset() {
-        let nfa = NFA::from_dictionary(BASIC_DICTIONARY.iter().cloned().collect())
-            .powerset_construction();
+        let nfa = NFA::from_dictionary(BASIC_DICTIONARY).powerset_construction();
         for (patt_no, &word) in BASIC_DICTIONARY.iter().enumerate() {
             assert!(nfa.apply(word.as_bytes()).contains(&patt_no));
         }
@@ -503,8 +527,7 @@ mod tests {
 
     #[test]
     fn basic_powerset_ignore_prefixes() {
-        let mut nfa = NFA::from_dictionary(BASIC_DICTIONARY.iter().cloned().collect())
-            .powerset_construction();
+        let mut nfa = NFA::from_dictionary(BASIC_DICTIONARY).powerset_construction();
         nfa.ignore_prefixes();
         for (patt_no, &word) in BASIC_DICTIONARY.iter().enumerate() {
             assert!(nfa.apply(word.as_bytes()).contains(&patt_no));
@@ -515,8 +538,7 @@ mod tests {
 
     #[test]
     fn basic_powerset_ignore_postfixes() {
-        let mut nfa = NFA::from_dictionary(BASIC_DICTIONARY.iter().cloned().collect())
-            .powerset_construction();
+        let mut nfa = NFA::from_dictionary(BASIC_DICTIONARY).powerset_construction();
         nfa.ignore_postfixes();
         for (patt_no, &word) in BASIC_DICTIONARY.iter().enumerate() {
             assert!(nfa.apply(word.as_bytes()).contains(&patt_no));
@@ -527,8 +549,7 @@ mod tests {
 
     #[test]
     fn basic_powerset_ignore_pre_postfixes() {
-        let mut nfa = NFA::from_dictionary(BASIC_DICTIONARY.iter().cloned().collect())
-            .powerset_construction();
+        let mut nfa = NFA::from_dictionary(BASIC_DICTIONARY).powerset_construction();
         nfa.ignore_prefixes();
         nfa.ignore_postfixes();
         for (patt_no, &word) in BASIC_DICTIONARY.iter().enumerate() {
@@ -540,8 +561,7 @@ mod tests {
 
     #[test]
     fn basic_powerset_ignore_pre_postfixes_order() {
-        let mut nfa = NFA::from_dictionary(BASIC_DICTIONARY.iter().cloned().collect())
-            .powerset_construction();
+        let mut nfa = NFA::from_dictionary(BASIC_DICTIONARY).powerset_construction();
         nfa.ignore_postfixes();
         nfa.ignore_prefixes();
         for (patt_no, &word) in BASIC_DICTIONARY.iter().enumerate() {
@@ -549,5 +569,53 @@ mod tests {
         }
         assert!(!nfa.apply("bbc".as_bytes()).is_empty());
         assert!(!nfa.apply("abb".as_bytes()).is_empty());
+    }
+
+    use automaton::Automaton;
+    use std::iter;
+
+    fn haystack_same(letter: char) -> String {
+        iter::repeat(letter).take(10000).collect()
+    }
+
+    #[test]
+    fn from_bench_basic_one_byte() {
+        let needles = vec!["a"];
+        let haystack = &haystack_same('z');
+
+        let mut nfa = NFA::from_dictionary(needles);
+        nfa.ignore_prefixes();
+        let dnfa: &NFA = &nfa.powerset_construction();
+
+        assert!(Automaton::find(dnfa, haystack.as_bytes()).next().is_none());
+    }
+
+    static HAYSTACK_SHERLOCK: &'static str = include_str!("../benches/sherlock.txt");
+
+    #[test]
+    fn nfa_from_bench_sherlock_alt1() {
+        let needles = vec!["Sherlock", "Street"];
+        let count = 158;
+
+        let haystack = HAYSTACK_SHERLOCK;
+
+        let mut nfa = NFA::from_dictionary(needles);
+        nfa.ignore_prefixes();
+
+        assert_eq!(count, nfa.find(haystack.as_bytes()).count());
+    }
+
+    #[test]
+    fn dnfa_from_bench_sherlock_alt1() {
+        let needles = vec!["Sherlock", "Street"];
+        let count = 158;
+
+        let haystack = HAYSTACK_SHERLOCK;
+
+        let mut nfa = NFA::from_dictionary(needles);
+        nfa.ignore_prefixes();
+        let dnfa = nfa.powerset_construction();
+
+        assert_eq!(count, dnfa.find(haystack.as_bytes()).count());
     }
 }
