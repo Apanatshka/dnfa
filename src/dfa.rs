@@ -168,7 +168,7 @@ impl Automaton<Input> for DDFA {
 
     #[inline]
     fn next_state(&self, &state: &Self::State, &input: &Input) -> Self::State {
-        unsafe { (*state).transitions[input as usize] }
+        unsafe { *(*state).transitions.get_unchecked(input as usize) }
     }
 
     #[inline]
@@ -178,7 +178,7 @@ impl Automaton<Input> for DDFA {
 
     #[inline]
     fn get_match(&self, &state: &Self::State, patt_no_offset: usize, text_offset: usize) -> Match {
-        let patt_no = unsafe { (*state).pattern_ends[patt_no_offset] };
+        let patt_no = unsafe { *(*state).pattern_ends.get_unchecked(patt_no_offset) };
         Match {
             patt_no: patt_no,
             start: text_offset - self.dict[patt_no].len(),
