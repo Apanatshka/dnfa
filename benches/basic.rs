@@ -5,6 +5,8 @@ extern crate dnfa;
 
 use std::iter;
 
+// These benchmark tests are derived from the ones in https://github.com/burntsushi/aho-corasick
+
 static HAYSTACK_RANDOM: &'static str = include_str!("random.txt");
 
 fn haystack_same(letter: char) -> String {
