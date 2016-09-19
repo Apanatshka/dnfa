@@ -2,12 +2,13 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::hash::Hash;
 use std::iter;
+use std::mem;
 
 use automaton::{AUTO_START, Automaton, Match};
 
 #[derive(Clone)]
-struct NFAHashState<Input: Eq + Hash, StateNumber, Payload> {
-    transitions: HashMap<Input, HashSet<StateNumber>>,
+struct NFAHashState<Input: Eq + Hash, StateRef, Payload> {
+    transitions: HashMap<Input, HashSet<StateRef>>,
     payload: Option<Payload>,
 }
 
@@ -62,5 +63,25 @@ impl<Input: Eq + Hash, Payload: Clone> Automaton<Input, Payload> for NFA<Input, 
             }
         }
         None
+    }
+}
+
+impl<Input: Eq + Hash, Payload: Clone> NFA<Input, Payload> {
+    pub fn apply<I: AsRef<[Input]>>(&self, input: I) -> Option<Payload> {
+        let mut cur_states = HashSet::new();
+        let mut nxt_states = HashSet::new();
+        cur_states.insert(AUTO_START);
+        for ref symbol in input.as_ref() {
+            for &cur_state in &cur_states {
+                if let Some(nxts) = self.states[cur_state].transitions.get(symbol) {
+                    nxt_states.extend(nxts);
+                }
+            }
+            // clear + swap: reuses memory.
+            // Otherwise same effect as: cur_states = nxt_states; nxt_state = HashSet::new();
+            cur_states.clear();
+            mem::swap(&mut cur_states, &mut nxt_states);
+        }
+        cur_states.iter().filter_map(|&state| self.states[state].payload.clone()).next()
     }
 }
