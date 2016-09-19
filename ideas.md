@@ -16,6 +16,10 @@ When the check if a state is final is relatively rare (when we're doing a single
 
 When a regex has a literal word in it, it has a completely predictable next set bytes when it gets to that literal. There may be a way to optimise that case. Not sure yet..
 
+## Use number of transitions to the nearest final state
+
+Calculating these for every (non-final) state isn't hard. This should allow the `get_match` to return a useful thing on non-final states, that will allow dispatching to loop-unrolled specialisations without checking for final states. That's should hopefully speed things up since it's the inner loop.  
+
 ## Merge ranges of inputs to the same state
 
 When we match on unicode but have the automaton work on bytes, we can get byte ranges that go to the same state. We can save such transitions more compactly (if we give up those fast, byte-indexed transition arrays) when we use a map and only save the inclusive ends of the transition. We can save only the lower end of a range and put the lower end of a stuck state range in there explicitly. This is only inefficient if there are a lot of alternations between bytes that have a transition and bytes that don't. 
@@ -24,6 +28,7 @@ When we match on unicode but have the automaton work on bytes, we can get byte r
 
 Experiment with different fast and compact lookups for final states and for input alphabet (https://en.wikipedia.org/wiki/Sparse_array, https://en.wikipedia.org/wiki/Bit_array#Advantages_and_disadvantages, (Reduced Ordered) Binary Decision Diagrams, maybe Zero-Suppressed)
 
-## [crazy] Write DFA as linear algebra using adjacency matrix
+## [crazy] Write DFA as linear algebra (using adjacency matrix?)
 
-Probably not even possible. https://github.com/vbarrielle/sprs - sparse linear algebra library for rust.  
+Probably not even possible. https://github.com/vbarrielle/sprs - sparse linear algebra library for rust.
+Recently read something that suggests this is possible and even done already, but of course forgot to bookmark it...
