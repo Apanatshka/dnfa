@@ -1,0 +1,9 @@
+[package]
+authors = ["Jeff Smits <jeff.smits@gmail.com>"]
+name = "dnfa"
+version = "0.1.0"
+
+[dependencies]
+bit-set = "0.4.0"
+bit-vec = "0.4.3"
+lazy_static = "0.2.1"
