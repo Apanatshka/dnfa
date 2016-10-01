@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::collections::BTreeSet;
 use std::hash::Hash;
 use std::iter;
 use std::mem;
@@ -7,26 +8,34 @@ use std::mem;
 use automaton::{AUTO_START, Automaton, Match};
 
 #[derive(Clone)]
-struct NFAHashState<Input: Eq + Hash, StateRef, Payload> {
+struct NFAHashState<Input, StateRef, Payload> {
     transitions: HashMap<Input, HashSet<StateRef>>,
     payload: Option<Payload>,
 }
 
-pub struct NFA<Input: Eq + Hash, Payload> {
+#[derive(Clone)]
+pub struct NFA<Input, Payload> {
     alphabet: Vec<Input>,
     states: Vec<NFAHashState<Input, usize, Payload>>,
 }
 
-impl NFAHashState<u8, usize, ()> {
+impl<Input: Eq + Hash, StateRef, Payload> NFAHashState<Input, StateRef, Payload> {
     fn new() -> Self {
         NFAHashState {
             transitions: HashMap::new(),
             payload: None,
         }
     }
+
+    fn from_payload(payload: Option<Payload>) -> Self {
+        NFAHashState {
+            transitions: HashMap::new(),
+            payload: payload,
+        }
+    }
 }
 
-impl NFA<u8, ()> {
+impl<Input: Eq + Hash, Payload> NFA<Input, Payload> {
     pub fn new() -> Self {
         NFA {
             alphabet: Vec::new(),
@@ -47,7 +56,9 @@ impl<Input: Eq + Hash, Payload: Clone> Automaton<Input, Payload> for NFA<Input, 
     fn next_state(&self, states: &Self::State, input: &Input) -> Self::State {
         let mut nxt_states = HashSet::new();
         for &state in states {
-            self.states[state].transitions.get(input).map(|states| nxt_states.extend(states));
+            if let Some(states) = self.states[state].transitions.get(input) {
+                nxt_states.extend(states);
+            }
         }
         nxt_states
     }
@@ -66,22 +77,95 @@ impl<Input: Eq + Hash, Payload: Clone> Automaton<Input, Payload> for NFA<Input, 
     }
 }
 
-impl<Input: Eq + Hash, Payload: Clone> NFA<Input, Payload> {
+impl<Input: Eq + Hash + Clone, Payload: Clone> NFA<Input, Payload> {
     pub fn apply<I: AsRef<[Input]>>(&self, input: I) -> Option<Payload> {
         let mut cur_states = HashSet::new();
         let mut nxt_states = HashSet::new();
         cur_states.insert(AUTO_START);
-        for ref symbol in input.as_ref() {
+        for symbol in input.as_ref() {
             for &cur_state in &cur_states {
                 if let Some(nxts) = self.states[cur_state].transitions.get(symbol) {
                     nxt_states.extend(nxts);
                 }
             }
             // clear + swap: reuses memory.
-            // Otherwise same effect as: cur_states = nxt_states; nxt_state = HashSet::new();
+            // Otherwise same effect as `cur_states = nxt_states; nxt_state = HashSet::new();`
             cur_states.clear();
             mem::swap(&mut cur_states, &mut nxt_states);
+
+            // Return early if "in stuck state"
+            if cur_states.is_empty() {
+                return None;
+            }
         }
         cur_states.iter().filter_map(|&state| self.states[state].payload.clone()).next()
+    }
+
+    pub fn powerset_construction<F>(&self, payload_fold: &F) -> Self
+        where F: Fn(Option<Payload>, &Option<Payload>) -> Option<Payload>
+    {
+        type StateRef = usize;
+
+        let mut states = vec![NFAHashState::new()];
+        let mut states_map: HashMap<BTreeSet<StateRef>, StateRef> = HashMap::new();
+        let cur_states: BTreeSet<StateRef> = iter::once(AUTO_START).collect();
+
+        states[AUTO_START].payload = self.states[AUTO_START].payload.clone();
+        states_map.insert(cur_states.clone(), AUTO_START);
+
+        psc_rec_helper(self,
+                       &mut states,
+                       &mut states_map,
+                       cur_states,
+                       AUTO_START,
+                       payload_fold);
+
+        NFA {
+            alphabet: self.alphabet.clone(),
+            states: states,
+        }
+    }
+}
+
+fn psc_rec_helper<Input, Payload, F>(nfa: &NFA<Input, Payload>,
+                                     states: &mut Vec<NFAHashState<Input, usize, Payload>>,
+                                     states_map: &mut HashMap<BTreeSet<usize>, usize>,
+                                     cur_states: BTreeSet<usize>,
+                                     cur_num: usize,
+                                     payload_fold: &F)
+    where Input: Eq + Hash + Clone,
+          Payload: Clone,
+          F: Fn(Option<Payload>, &Option<Payload>) -> Option<Payload>
+{
+    for input in &nfa.alphabet {
+        let mut nxt_states = BTreeSet::new();
+        let mut payload = None;
+        for &cur_state in &cur_states {
+            if let Some(states) = nfa.states[cur_state].transitions.get(input) {
+                nxt_states.extend(states);
+                payload = states.iter()
+                    .map(|&st| &nfa.states[st].payload)
+                    .fold(payload, payload_fold);
+            }
+        }
+
+        // Skip the stuck state
+        if nxt_states.is_empty() {
+            continue;
+        }
+
+        let nxt_num = states_map.get(&nxt_states).cloned().unwrap_or_else(|| {
+            let nxt_num = states.len();
+            states.push(NFAHashState::from_payload(payload));
+            states_map.insert(nxt_states.clone(), nxt_num);
+            psc_rec_helper(nfa, states, states_map, nxt_states, nxt_num, payload_fold);
+            nxt_num
+        });
+
+        states[cur_num]
+            .transitions
+            .entry(input.clone())
+            .or_insert_with(HashSet::new)
+            .insert(nxt_num);
     }
 }
