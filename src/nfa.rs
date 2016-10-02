@@ -44,6 +44,20 @@ impl<Input: Eq + Hash, Payload> NFA<Input, Payload> {
     }
 }
 
+impl<Input: Eq + Hash, Payload: Clone> NFA<Input, Payload> {
+    #[inline]
+    fn _next_state<'i, 'j, Iter, Ext>(&'j self, states: Iter, symbol: &Input, nxt_states: &mut Ext)
+        where Iter: IntoIterator<Item = &'i usize>,
+              Ext: Extend<&'j usize>
+    {
+        for &state in states {
+            if let Some(states) = self.states[state].transitions.get(symbol) {
+                nxt_states.extend(states);
+            }
+        }
+    }
+}
+
 impl<Input: Eq + Hash, Payload: Clone> Automaton<Input, Payload> for NFA<Input, Payload> {
     type State = HashSet<usize>;
 
@@ -53,13 +67,9 @@ impl<Input: Eq + Hash, Payload: Clone> Automaton<Input, Payload> for NFA<Input, 
     }
 
     #[inline]
-    fn next_state(&self, states: &Self::State, input: &Input) -> Self::State {
+    fn next_state(&self, states: &Self::State, symbol: &Input) -> Self::State {
         let mut nxt_states = HashSet::new();
-        for &state in states {
-            if let Some(states) = self.states[state].transitions.get(input) {
-                nxt_states.extend(states);
-            }
-        }
+        self._next_state(states, symbol, &mut nxt_states);
         nxt_states
     }
 
@@ -83,11 +93,7 @@ impl<Input: Eq + Hash + Clone, Payload: Clone> NFA<Input, Payload> {
         let mut nxt_states = HashSet::new();
         cur_states.insert(AUTO_START);
         for symbol in input.as_ref() {
-            for &cur_state in &cur_states {
-                if let Some(nxts) = self.states[cur_state].transitions.get(symbol) {
-                    nxt_states.extend(nxts);
-                }
-            }
+            self._next_state(&cur_states, symbol, &mut nxt_states);
             // clear + swap: reuses memory.
             // Otherwise same effect as `cur_states = nxt_states; nxt_state = HashSet::new();`
             cur_states.clear();
@@ -137,17 +143,9 @@ fn psc_rec_helper<Input, Payload, F>(nfa: &NFA<Input, Payload>,
           Payload: Clone,
           F: Fn(Option<Payload>, &Option<Payload>) -> Option<Payload>
 {
-    for input in &nfa.alphabet {
+    for symbol in &nfa.alphabet {
         let mut nxt_states = BTreeSet::new();
-        let mut payload = None;
-        for &cur_state in &cur_states {
-            if let Some(states) = nfa.states[cur_state].transitions.get(input) {
-                nxt_states.extend(states);
-                payload = states.iter()
-                    .map(|&st| &nfa.states[st].payload)
-                    .fold(payload, payload_fold);
-            }
-        }
+        nfa._next_state(&cur_states, symbol, &mut nxt_states);
 
         // Skip the stuck state
         if nxt_states.is_empty() {
@@ -156,6 +154,9 @@ fn psc_rec_helper<Input, Payload, F>(nfa: &NFA<Input, Payload>,
 
         let nxt_num = states_map.get(&nxt_states).cloned().unwrap_or_else(|| {
             let nxt_num = states.len();
+            let payload = nxt_states.iter()
+                .map(|&st| &nfa.states[st].payload)
+                .fold(None, payload_fold);
             states.push(NFAHashState::from_payload(payload));
             states_map.insert(nxt_states.clone(), nxt_num);
             psc_rec_helper(nfa, states, states_map, nxt_states, nxt_num, payload_fold);
@@ -164,7 +165,7 @@ fn psc_rec_helper<Input, Payload, F>(nfa: &NFA<Input, Payload>,
 
         states[cur_num]
             .transitions
-            .entry(input.clone())
+            .entry(symbol.clone())
             .or_insert_with(HashSet::new)
             .insert(nxt_num);
     }
