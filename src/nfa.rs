@@ -119,54 +119,39 @@ impl<Input: Eq + Hash + Clone, Payload: Clone> NFA<Input, Payload> {
         states[AUTO_START].payload = self.states[AUTO_START].payload.clone();
         states_map.insert(cur_states.clone(), AUTO_START);
 
-        psc_rec_helper(self,
-                       &mut states,
-                       &mut states_map,
-                       cur_states,
-                       AUTO_START,
-                       payload_fold);
+        let mut worklist = vec![(cur_states, AUTO_START)];
+        while let Some((cur_states, cur_num)) = worklist.pop() {
+            for symbol in &self.alphabet {
+                let mut nxt_states = BTreeSet::new();
+                self._next_state(&cur_states, symbol, &mut nxt_states);
+
+                // Skip the stuck state
+                if nxt_states.is_empty() {
+                    continue;
+                }
+
+                let nxt_num = states_map.get(&nxt_states).cloned().unwrap_or_else(|| {
+                    let nxt_num = states.len();
+                    let payload = nxt_states.iter()
+                        .map(|&st| &self.states[st].payload)
+                        .fold(None, payload_fold);
+                    states.push(NFAHashState::from_payload(payload));
+                    states_map.insert(nxt_states.clone(), nxt_num);
+                    worklist.push((nxt_states, nxt_num));
+                    nxt_num
+                });
+
+                states[cur_num]
+                    .transitions
+                    .entry(symbol.clone())
+                    .or_insert_with(HashSet::new)
+                    .insert(nxt_num);
+            }
+        }
 
         NFA {
             alphabet: self.alphabet.clone(),
             states: states,
         }
-    }
-}
-
-fn psc_rec_helper<Input, Payload, F>(nfa: &NFA<Input, Payload>,
-                                     states: &mut Vec<NFAHashState<Input, usize, Payload>>,
-                                     states_map: &mut HashMap<BTreeSet<usize>, usize>,
-                                     cur_states: BTreeSet<usize>,
-                                     cur_num: usize,
-                                     payload_fold: &F)
-    where Input: Eq + Hash + Clone,
-          Payload: Clone,
-          F: Fn(Option<Payload>, &Option<Payload>) -> Option<Payload>
-{
-    for symbol in &nfa.alphabet {
-        let mut nxt_states = BTreeSet::new();
-        nfa._next_state(&cur_states, symbol, &mut nxt_states);
-
-        // Skip the stuck state
-        if nxt_states.is_empty() {
-            continue;
-        }
-
-        let nxt_num = states_map.get(&nxt_states).cloned().unwrap_or_else(|| {
-            let nxt_num = states.len();
-            let payload = nxt_states.iter()
-                .map(|&st| &nfa.states[st].payload)
-                .fold(None, payload_fold);
-            states.push(NFAHashState::from_payload(payload));
-            states_map.insert(nxt_states.clone(), nxt_num);
-            psc_rec_helper(nfa, states, states_map, nxt_states, nxt_num, payload_fold);
-            nxt_num
-        });
-
-        states[cur_num]
-            .transitions
-            .entry(symbol.clone())
-            .or_insert_with(HashSet::new)
-            .insert(nxt_num);
     }
 }
