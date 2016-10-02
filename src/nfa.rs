@@ -7,6 +7,8 @@ use std::mem;
 
 use automaton::{AUTO_START, Automaton, Match};
 
+// NFAs
+
 #[derive(Clone)]
 struct NFAHashState<Input, StateRef, Payload> {
     transitions: HashMap<Input, HashSet<StateRef>>,
@@ -107,12 +109,12 @@ impl<Input: Eq + Hash + Clone, Payload: Clone> NFA<Input, Payload> {
         cur_states.iter().filter_map(|&state| self.states[state].payload.clone()).next()
     }
 
-    pub fn powerset_construction<F>(&self, payload_fold: &F) -> Self
+    pub fn powerset_construction<F>(&self, payload_fold: &F) -> DFA<Input, Payload>
         where F: Fn(Option<Payload>, &Option<Payload>) -> Option<Payload>
     {
         type StateRef = usize;
 
-        let mut states = vec![NFAHashState::new()];
+        let mut states = vec![DFAHashState::new()];
         let mut states_map: HashMap<BTreeSet<StateRef>, StateRef> = HashMap::new();
         let cur_states: BTreeSet<StateRef> = iter::once(AUTO_START).collect();
 
@@ -135,23 +137,58 @@ impl<Input: Eq + Hash + Clone, Payload: Clone> NFA<Input, Payload> {
                     let payload = nxt_states.iter()
                         .map(|&st| &self.states[st].payload)
                         .fold(None, payload_fold);
-                    states.push(NFAHashState::from_payload(payload));
+                    states.push(DFAHashState::from_payload(payload));
                     states_map.insert(nxt_states.clone(), nxt_num);
                     worklist.push((nxt_states, nxt_num));
                     nxt_num
                 });
 
-                states[cur_num]
-                    .transitions
-                    .entry(symbol.clone())
-                    .or_insert_with(HashSet::new)
-                    .insert(nxt_num);
+                states[cur_num].transitions.insert(symbol.clone(), nxt_num);
             }
         }
 
-        NFA {
+        DFA {
             alphabet: self.alphabet.clone(),
             states: states,
+        }
+    }
+}
+
+// DFAs
+
+#[derive(Clone)]
+struct DFAHashState<Input, StateRef, Payload> {
+    transitions: HashMap<Input, StateRef>,
+    payload: Option<Payload>,
+}
+
+#[derive(Clone)]
+pub struct DFA<Input, Payload> {
+    alphabet: Vec<Input>,
+    states: Vec<DFAHashState<Input, usize, Payload>>,
+}
+
+impl<Input: Eq + Hash, StateRef, Payload> DFAHashState<Input, StateRef, Payload> {
+    fn new() -> Self {
+        DFAHashState {
+            transitions: HashMap::new(),
+            payload: None,
+        }
+    }
+
+    fn from_payload(payload: Option<Payload>) -> Self {
+        DFAHashState {
+            transitions: HashMap::new(),
+            payload: payload,
+        }
+    }
+}
+
+impl<Input: Eq + Hash, Payload> DFA<Input, Payload> {
+    pub fn new() -> Self {
+        DFA {
+            alphabet: Vec::new(),
+            states: Vec::new(),
         }
     }
 }
