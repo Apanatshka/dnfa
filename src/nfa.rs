@@ -16,10 +16,12 @@ struct NFAHashState<Input, StateRef, Payload> {
 }
 
 #[derive(Clone)]
-pub struct NFA<Input, Payload> {
+pub struct FiniteAutomaton<Input, State> {
     alphabet: Vec<Input>,
-    states: Vec<NFAHashState<Input, usize, Payload>>,
+    states: Vec<State>,
 }
+
+type NFA<Input, Payload> = FiniteAutomaton<Input, NFAHashState<Input, usize, Payload>>;
 
 impl<Input: Eq + Hash, StateRef, Payload> NFAHashState<Input, StateRef, Payload> {
     fn new() -> Self {
@@ -110,7 +112,7 @@ impl<Input: Eq + Hash + Clone, Payload: Clone> NFA<Input, Payload> {
     }
 
     pub fn powerset_construction<F>(&self, payload_fold: &F) -> DFA<Input, Payload>
-        where F: Fn(Option<Payload>, &Option<Payload>) -> Option<Payload>
+        where F: Fn(Payload, &Payload) -> Payload
     {
         type StateRef = usize;
 
@@ -134,9 +136,14 @@ impl<Input: Eq + Hash + Clone, Payload: Clone> NFA<Input, Payload> {
 
                 let nxt_num = states_map.get(&nxt_states).cloned().unwrap_or_else(|| {
                     let nxt_num = states.len();
-                    let payload = nxt_states.iter()
-                        .map(|&st| &self.states[st].payload)
-                        .fold(None, payload_fold);
+                    let payload = {
+                        let mut iter = nxt_states.iter().filter_map(|&st| self.states[st].payload.as_ref());
+                        if let Some(first) = iter.next() {
+                            Some(iter.fold(first.clone(), payload_fold))
+                        } else {
+                            None
+                        }
+                    };
                     states.push(DFAHashState::from_payload(payload));
                     states_map.insert(nxt_states.clone(), nxt_num);
                     worklist.push((nxt_states, nxt_num));
@@ -162,11 +169,7 @@ struct DFAHashState<Input, StateRef, Payload> {
     payload: Option<Payload>,
 }
 
-#[derive(Clone)]
-pub struct DFA<Input, Payload> {
-    alphabet: Vec<Input>,
-    states: Vec<DFAHashState<Input, usize, Payload>>,
-}
+type DFA<Input, Payload> = FiniteAutomaton<Input, DFAHashState<Input, usize, Payload>>;
 
 impl<Input: Eq + Hash, StateRef, Payload> DFAHashState<Input, StateRef, Payload> {
     fn new() -> Self {
