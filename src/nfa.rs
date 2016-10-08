@@ -137,7 +137,8 @@ impl<Input: Eq + Hash + Clone, Payload: Clone> NFA<Input, Payload> {
                 let nxt_num = states_map.get(&nxt_states).cloned().unwrap_or_else(|| {
                     let nxt_num = states.len();
                     let payload = {
-                        let mut iter = nxt_states.iter().filter_map(|&st| self.states[st].payload.as_ref());
+                        let mut iter = nxt_states.iter()
+                            .filter_map(|&st| self.states[st].payload.as_ref());
                         if let Some(first) = iter.next() {
                             Some(iter.fold(first.clone(), payload_fold))
                         } else {
