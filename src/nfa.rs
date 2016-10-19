@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::BTreeSet;
@@ -25,10 +26,10 @@ type NFA<Input, Payload> = FiniteAutomaton<Input, NFAHashState<Input, usize, Pay
 type NFAE<Input, Payload> = FiniteAutomaton<Input, NFAHashState<Option<Input>, usize, Payload>>;
 
 impl<Input: Eq + Hash, StateRef, Payload> NFAHashState<Input, StateRef, Payload> {
-    fn new() -> Self {
+    fn new(transitions: HashMap<Input, HashSet<StateRef>>, payload: Option<Payload>) -> Self {
         NFAHashState {
-            transitions: HashMap::new(),
-            payload: None,
+            transitions: transitions,
+            payload: payload,
         }
     }
 
@@ -163,124 +164,149 @@ impl<Input: Eq + Hash + Clone, Payload: Clone> NFA<Input, Payload> {
     }
 }
 
+// NFAE helper types
+type Epsilons = Vec<HashSet<usize>>;
+type EpsilonsRef<'a> = &'a [HashSet<usize>];
+type EpsilonsMutRef<'a>  = &'a mut [HashSet<usize>];
+type NFAStates<Input, Payload> = Vec<NFAHashState<Input, usize, Payload>>;
+type NFAStatesRef<'a, Input, Payload> = &'a [NFAHashState<Input, usize, Payload>];
+type NFAStatesMutRef<'a, Input, Payload> = &'a mut [NFAHashState<Input, usize, Payload>];
+type RevEpsilons = Vec<(usize, HashSet<usize>)>;
+type Cycle = HashSet<usize>;
+
 impl<Input: Eq + Hash + Clone, Payload: Clone> NFAE<Input, Payload> {
-    /// Removes epsilon transitions by adding direct transitions
-    /// Keeps the amount of states equal, cycles just all get the same transitions
-    /* Implementation:
-    1. Clones all states while keeping only the normal transitions.
-    2. Gets all epsilon transitions (and their reverse) while cloning states.
-    3. Uses reverse epsilons to remove epsilons in a topological order.
-    4. Detects cycles by having reverse epsilons left that cannot be removed.
-    5. Uses the forward epsilons to find a cycle and remove it.
-    6. The cycle cannot be easily removed from the reverse epsilons list, so we duplicate some code.
-    */
-    pub fn epsilon_closure(&self) -> NFA<Input, Payload> {
-        macro_rules! add_transitions {
-            ($one:expr, $other:expr) => {
-                for tr in $other {
-                    $one.entry(tr.0).or_insert_with(HashSet::new).extend(tr.1);
+    fn split_transitions(&self) -> (Epsilons, NFAStates<Input, Payload>) {
+        let epsilons: Epsilons = self.states
+            .iter()
+            .map(|st| st.transitions.get(&None).cloned().unwrap_or_else(HashSet::new))
+            .collect();
+
+        let states: NFAStates<Input, Payload> = self.states
+            .iter()
+            .map(|st| {
+                let transitions = st.transitions
+                    .iter()
+                    .filter_map(|(inp, st_ref)| inp.clone().map(|k| (k.clone(), st_ref.clone())))
+                    .collect();
+                NFAHashState::new(transitions, st.payload.clone())
+            })
+            .collect();
+
+        (epsilons, states)
+    }
+
+    fn build_reverse_epsilons(epsilons: EpsilonsRef) -> RevEpsilons {
+        let mut rev_epsilons: RevEpsilons =
+            iter::repeat(HashSet::new()).enumerate().take(epsilons.len()).collect();
+        for (n, eps) in epsilons.iter().enumerate() {
+            for &e in eps {
+                rev_epsilons[e].1.insert(n);
+            }
+        }
+        rev_epsilons.retain(|t| !t.1.is_empty());
+        rev_epsilons
+    }
+
+    fn remove_outer_epsilons(mut rev_epsilons: RevEpsilons,
+                             epsilons: EpsilonsMutRef,
+                             states: NFAStatesMutRef<Input, Payload>,
+                             exclude: &Cycle)
+                             -> RevEpsilons {
+        rev_epsilons.sort_by_key(|v| epsilons[v.0].len());
+        rev_epsilons.into_iter()
+            .filter(|&(n, ref rev_eps)| {
+                if epsilons[n].is_empty() {
+                    for &e in rev_eps.difference(exclude) {
+                        for tr in states[n].transitions.clone() {
+                            states[e]
+                                .transitions
+                                .entry(tr.0)
+                                .or_insert_with(HashSet::new)
+                                .extend(tr.1);
+                        }
+                        epsilons[e].remove(&n);
+                    }
+                }
+                epsilons[n].is_empty()
+            })
+            .collect()
+    }
+
+    /// Finds a cycle by walking from the given start_state to all other states it can reach
+    // TODO: Make sure no line into the cycle is included
+    fn find_cycle(start_state: usize, epsilons: EpsilonsMutRef) -> Cycle {
+        let mut cycle = HashSet::new();
+        let mut todo = vec![start_state];
+        while let Some(state) = todo.pop() {
+            if !cycle.insert(state) {
+                todo.extend(mem::replace(&mut epsilons[state], HashSet::new()));
+            }
+        }
+        cycle
+    }
+
+    fn combine_cycle_transitions(cycle: &Cycle,
+                                 states: NFAStatesRef<Input, Payload>)
+                                 -> HashMap<Input, HashSet<usize>> {
+        let mut trans_iter = cycle.iter().map(|&n| &states[n].transitions);
+        let mut transitions = trans_iter.next().unwrap_or_else(|| unreachable!()).clone();
+        for trans in trans_iter {
+            for tr in trans.clone() {
+                transitions.entry(tr.0).or_insert_with(HashSet::new).extend(tr.1);
+            }
+        }
+        transitions
+    }
+
+    pub fn naive_epsilon_closure(&self) -> NFA<Input, Payload> {
+        let (epsilons, mut states) = self.split_transitions();
+
+        for (n, eps) in epsilons.iter().enumerate() {
+            for &e in eps {
+                for (inp, st_ref) in states[e].transitions.clone() {
+                    states[n].transitions.entry(inp).or_insert_with(HashSet::new).extend(st_ref);
                 }
             }
         }
 
-        let mut epsilons: Vec<HashSet<usize>> =
-            iter::repeat(HashSet::new()).take(self.states.len()).collect();
-        let mut rev_epsilons: Vec<(usize, HashSet<usize>)> =
-            iter::repeat(HashSet::new()).enumerate().take(self.states.len()).collect();
+        NFA {
+            alphabet: self.alphabet.clone(),
+            states: states,
+        }
+    }
 
-        let mut states: Vec<NFAHashState<Input, usize, Payload>> = self.states
-            .iter()
-            .enumerate()
-            .map(|(n, st)| {
-                NFAHashState {
-                    transitions: {
-                        let mut transitions: HashMap<Input, HashSet<usize>> = HashMap::new();
-                        for (k, v) in &st.transitions {
-                            if let Some(k) = k.clone() {
-                                transitions.insert(k, v.clone());
-                            } else {
-                                epsilons[n].extend(v);
-                                for st_ref in v {
-                                    rev_epsilons[*st_ref].1.insert(n);
-                                }
-                            }
-                        }
-                        transitions
-                    },
-                    payload: st.payload.clone(),
-                }
-            })
-            .collect();
-
-        rev_epsilons.retain(|t| !t.1.is_empty());
-
-        let mut new_rev_epsilons = Vec::new();
+    /// Removes epsilon transitions by adding direct transitions
+    /// Keeps the amount of states equal, cycles just all get the same transitions
+    // Implementation:
+    // 1. Get all states with normal transitions, the epsilon transitions, and their reverse.
+    // 2. Remove epsilons in a reverse topological order.
+    // 3. Detect cycles when no (reverse) epsilons are removed.
+    // 4. Get cycle and remove its epsilons.
+    // 5. Set cycle states to combined transitions.
+    // 6. Remove more epsilons in reverse topo order while using the cycle to avoid extra work.
+    //    (Because the rev_epsilons still have the cycle in there)
+    pub fn epsilon_closure(&self) -> NFA<Input, Payload> {
+        let (mut epsilons, mut states) = self.split_transitions();
+        let mut rev_epsilons = Self::build_reverse_epsilons(&epsilons);
 
         while !rev_epsilons.is_empty() {
-            rev_epsilons.sort_by_key(|v| epsilons[v.0].len());
+            let initial_len = rev_epsilons.len();
 
-            let mut change = false;
+            let no_cycle = HashSet::new();
+            rev_epsilons =
+                Self::remove_outer_epsilons(rev_epsilons, &mut epsilons, &mut states, &no_cycle);
 
-            for &mut (n, ref mut rev_eps) in rev_epsilons.iter_mut() {
-                if epsilons[n].is_empty() {
-                    change = true;
-                    for &e in rev_eps.iter() {
-                        let n_trans = states[n].transitions.clone();
-                        add_transitions!(states[e].transitions, n_trans);
-                        epsilons[e].remove(&n);
-                    }
-                } else {
-                    new_rev_epsilons.push((n, mem::replace(rev_eps, HashSet::new())));
-                }
-            }
+            if initial_len == rev_epsilons.len() {
+                let cycle = Self::find_cycle(rev_epsilons[0].0, &mut epsilons);
 
-            rev_epsilons.clear();
-            mem::swap(&mut rev_epsilons, &mut new_rev_epsilons);
+                let transitions = Self::combine_cycle_transitions(&cycle, &states);
 
-            // if epsilon cycle
-            if !change && !rev_epsilons.is_empty() {
-                // find cycle
-                let cycle_node = rev_epsilons[0].0;
-                let mut cycle = HashSet::new();
-                let mut todo = vec![cycle_node];
-                while let Some(node) = todo.pop() {
-                    // if new cycle node found
-                    if !cycle.insert(node) {
-                        todo.extend(mem::replace(&mut epsilons[node], HashSet::new()));
-                    }
-                }
-
-                // get transitions of cycle
-                let transitions = {
-                    let mut trans_iter = cycle.iter().map(|&n| &states[n].transitions);
-                    let mut transitions =
-                        trans_iter.next().unwrap_or_else(|| unreachable!()).clone();
-                    for trans in trans_iter {
-                        add_transitions!(transitions, trans.clone());
-                    }
-                    transitions
-                };
-
-                // set cycle transitions
                 for &n in &cycle {
                     states[n].transitions = transitions.clone();
                 }
 
-                for &mut (n, ref mut rev_eps) in rev_epsilons.iter_mut() {
-                    if epsilons[n].is_empty() {
-                        change = true;
-                        for &e in rev_eps.difference(&cycle) {
-                            let n_trans = states[n].transitions.clone();
-                            add_transitions!(states[e].transitions, n_trans);
-                            epsilons[e].remove(&n);
-                        }
-                    } else {
-                        new_rev_epsilons.push((n, mem::replace(rev_eps, HashSet::new())));
-                    }
-                }
-
-                rev_epsilons.clear();
-                mem::swap(&mut rev_epsilons, &mut new_rev_epsilons);
+                rev_epsilons =
+                    Self::remove_outer_epsilons(rev_epsilons, &mut epsilons, &mut states, &cycle);
             }
         }
 
