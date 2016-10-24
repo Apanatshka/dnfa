@@ -167,29 +167,32 @@ impl<Input: Eq + Hash + Clone, Payload: Clone> NFA<Input, Payload> {
 impl<Input: Eq + Hash + Clone, Payload: Clone> NFAE<Input, Payload> {
     /// Replaces epsilon transitions with equivalent states/transitions
     /// Cycles are replaced by single states
+    /// States that aren't reachable from `AUTO_START` are preserved (not by design)
     pub fn to_nfa(&self) -> NFA<Input, Payload> {
         // the new states
         let mut states: Vec<NFAHashState<Input, usize, Payload>> = Vec::new();
         // Maps visited stateref to offset in stack
-        let mut visited: HashMap<usize, usize> = HashMap::new();
+        let mut visiting: HashMap<usize, usize> = HashMap::new();
         // Maps staterefs that are finished to staterefs in the new NFA
-        let mut renumbering: Vec<usize> = vec![::std::usize::MAX; states.len()];
+        let mut renumbering: Vec<usize> = vec![::std::usize::MAX; self.states.len()];
         // Stack of states we've seen/ are working on.
         let mut stack: Vec<usize> = vec![AUTO_START];
+        // Lowest non-visited
+        let mut unvisited = 0;
 
-        while !stack.is_empty() {
+        loop {
             let nfae_st_ref = stack[stack.len() - 1];
             let nfae_st = &self.states[nfae_st_ref];
             let new_state = if let Some(st_refs) = nfae_st.transitions.get(&None) {
                 for &st_ref in st_refs {
-                    match visited.get(&st_ref) {
+                    match visiting.get(&st_ref) {
                         Some(&::std::usize::MAX) => continue,
                         Some(&offset) => {
                             unimplemented!(); //TODO: loop detected
                             break;
                         }
                         None => {
-                            visited.insert(st_ref, stack.len());
+                            visiting.insert(st_ref, stack.len());
                             stack.push(st_ref);
                             break;
                         }
@@ -209,13 +212,24 @@ impl<Input: Eq + Hash + Clone, Payload: Clone> NFAE<Input, Payload> {
             };
             renumbering[nfae_st_ref] = states.len();
             states.push(new_state);
-            visited.remove(&nfae_st_ref);
+            visiting.remove(&nfae_st_ref);
             stack.pop();
-            // TODO: Add something new to `stack` when it's empty, so we don't just process the...
-            // TODO: ...states reachable from `AUTO_START` with epsilon transitions.
+            while renumbering[unvisited] != ::std::usize::MAX && unvisited < self.states.len() {
+                unvisited += 1;
+            }
+            if stack.is_empty() && unvisited < self.states.len() {
+                stack.push(unvisited);
+            } else {
+                break;
+            }
         }
 
-        // TODO: actually renumber the normal transitions now that the renumbering is complete.
+        for state in &mut states {
+            for (_, st_refs) in &mut state.transitions {
+                let new_st_refs = st_refs.iter().map(|&st_ref| renumbering[st_ref]).collect();
+                mem::replace(st_refs, new_st_refs);
+            }
+        }
 
         NFA {
             alphabet: self.alphabet.clone(),
