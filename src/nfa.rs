@@ -199,13 +199,13 @@ impl<Input: Eq + Hash + Clone, Payload: Clone> NFAE<Input, Payload> {
                 Self::eps_state_to_nfa(nfae_st, &renumbering, &states)
             } else {
                 if nfae_st_ref == AUTO_START && states.len() != AUTO_START {
-                    states[AUTO_START] = Self::state_to_nfa(nfae_st, &renumbering);
+                    states[AUTO_START] = Self::state_to_nfa(nfae_st);
                     continue;
                 }
                 if states.len() == AUTO_START && nfae_st_ref != AUTO_START {
                     states.push(NFAHashState::new());
                 }
-                Self::state_to_nfa(nfae_st, &renumbering)
+                Self::state_to_nfa(nfae_st)
             };
             renumbering[nfae_st_ref] = states.len();
             states.push(new_state);
@@ -215,21 +215,20 @@ impl<Input: Eq + Hash + Clone, Payload: Clone> NFAE<Input, Payload> {
             // TODO: ...states reachable from `AUTO_START` with epsilon transitions.
         }
 
+        // TODO: actually renumber the normal transitions now that the renumbering is complete.
+
         NFA {
             alphabet: self.alphabet.clone(),
             states: states,
         }
     }
 
-    fn state_to_nfa(st: &NFAHashState<Option<Input>, usize, Payload>,
-                    renumbering: &[usize])
+    fn state_to_nfa(st: &NFAHashState<Option<Input>, usize, Payload>)
                     -> NFAHashState<Input, usize, Payload> {
         NFAHashState {
             transitions: st.transitions
                 .iter()
-                .filter_map(|(k, v)| {
-                    k.as_ref().map(|k| (k.clone(), v.iter().map(|&r| renumbering[r]).collect()))
-                })
+                .filter_map(|(k, v)| k.as_ref().map(|k| (k.clone(), v.clone())))
                 .collect(),
             payload: st.payload.clone(),
         }
@@ -241,13 +240,15 @@ impl<Input: Eq + Hash + Clone, Payload: Clone> NFAE<Input, Payload> {
                         -> NFAHashState<Input, usize, Payload> {
         let mut transitions: HashMap<Input, HashSet<usize>> = HashMap::new();
         for (input, st_refs) in &st.transitions {
-            let renumbered = st_refs.iter().map(|&st_ref| renumbering[st_ref]);
             match input.as_ref() {
                 Some(input) => {
-                    transitions.insert(input.clone(), renumbered.collect());
+                    transitions.insert(input.clone(), st_refs.clone());
                 }
-                None => transitions.extend(
-                    renumbered.flat_map(|st_ref| states[st_ref].transitions.clone())),
+                None => {
+                    transitions.extend(st_refs.iter()
+                        .map(|&st_ref| renumbering[st_ref])
+                        .flat_map(|st_ref| states[st_ref].transitions.clone()))
+                }
             }
         }
         NFAHashState {
