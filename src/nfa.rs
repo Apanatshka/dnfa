@@ -23,7 +23,15 @@ pub struct FiniteAutomaton<Input, State> {
 }
 
 type NFA<Input, Payload> = FiniteAutomaton<Input, NFAHashState<Input, usize, Payload>>;
-type NFAE<Input, Payload> = FiniteAutomaton<Input, NFAHashState<Option<Input>, usize, Payload>>;
+
+#[derive(Clone)]
+struct NFAEHashState<Input, StateRef, Payload> {
+    transitions: HashMap<Input, HashSet<StateRef>>,
+    e_transition: HashSet<StateRef>,
+    payload: Option<Payload>,
+}
+
+type NFAE<Input, Payload> = FiniteAutomaton<Input, NFAEHashState<Input, usize, Payload>>;
 
 impl<Input: Eq + Hash, StateRef, Payload> NFAHashState<Input, StateRef, Payload> {
     fn new() -> Self {
