@@ -49,6 +49,15 @@ impl<Input: Eq + Hash, StateRef, Payload> NFAHashState<Input, StateRef, Payload>
     }
 }
 
+impl<Input: Eq + Hash + Clone, StateRef: Clone, Payload: Clone> NFAEHashState<Input, StateRef, Payload> {
+    fn drop_epsilons(&self) -> NFAHashState<Input, StateRef, Payload> {
+        NFAHashState {
+            transitions: self.transitions.clone(),
+            payload: self.payload.clone(),
+        }
+    }
+}
+
 impl<Input: Eq + Hash, Payload> NFA<Input, Payload> {
     pub fn new() -> Self {
         NFA {
@@ -191,8 +200,8 @@ impl<Input: Eq + Hash + Clone, Payload: Clone> NFAE<Input, Payload> {
         loop {
             let nfae_st_ref = stack[stack.len() - 1];
             let nfae_st = &self.states[nfae_st_ref];
-            let new_state = if let Some(st_refs) = nfae_st.transitions.get(&None) {
-                for &st_ref in st_refs {
+            let new_state = if !nfae_st.e_transition.is_empty() {
+                for &st_ref in &nfae_st.e_transition {
                     match visiting.get(&st_ref) {
                         Some(&::std::usize::MAX) => continue,
                         Some(&offset) => {
@@ -210,13 +219,13 @@ impl<Input: Eq + Hash + Clone, Payload: Clone> NFAE<Input, Payload> {
                 Self::eps_state_to_nfa(nfae_st, &renumbering, &states)
             } else {
                 if nfae_st_ref == AUTO_START && states.len() != AUTO_START {
-                    states[AUTO_START] = Self::state_to_nfa(nfae_st);
+                    states[AUTO_START] = nfae_st.drop_epsilons();
                     continue;
                 }
                 if states.len() == AUTO_START && nfae_st_ref != AUTO_START {
                     states.push(NFAHashState::new());
                 }
-                Self::state_to_nfa(nfae_st)
+                nfae_st.drop_epsilons()
             };
             renumbering[nfae_st_ref] = states.len();
             states.push(new_state);
@@ -245,36 +254,17 @@ impl<Input: Eq + Hash + Clone, Payload: Clone> NFAE<Input, Payload> {
         }
     }
 
-    fn state_to_nfa(st: &NFAHashState<Option<Input>, usize, Payload>)
-                    -> NFAHashState<Input, usize, Payload> {
-        NFAHashState {
-            transitions: st.transitions
-                .iter()
-                .filter_map(|(k, v)| k.as_ref().map(|k| (k.clone(), v.clone())))
-                .collect(),
-            payload: st.payload.clone(),
-        }
-    }
-
-    fn eps_state_to_nfa(st: &NFAHashState<Option<Input>, usize, Payload>,
+    fn eps_state_to_nfa(st: &NFAEHashState<Input, usize, Payload>,
                         renumbering: &[usize],
                         states: &[NFAHashState<Input, usize, Payload>])
                         -> NFAHashState<Input, usize, Payload> {
-        let mut transitions: HashMap<Input, HashSet<usize>> = HashMap::new();
-        for (input, st_refs) in &st.transitions {
-            match input.as_ref() {
-                Some(input) => {
-                    transitions.insert(input.clone(), st_refs.clone());
-                }
-                None => {
-                    transitions.extend(st_refs.iter()
-                        .map(|&st_ref| renumbering[st_ref])
-                        .flat_map(|st_ref| states[st_ref].transitions.clone()))
-                }
-            }
+        let mut transitions: HashMap<Input, HashSet<usize>> = st.transitions.clone();
+        for &st_ref in &st.e_transition {
+            renumbering[st_ref];
+            transitions.extend(states[st_ref].transitions.clone());
         }
         NFAHashState {
-            transitions: transitions,
+            transitions: st.transitions.clone(),
             payload: st.payload.clone(),
         }
     }
