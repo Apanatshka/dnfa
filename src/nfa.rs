@@ -49,7 +49,9 @@ impl<Input: Eq + Hash, StateRef, Payload> NFAHashState<Input, StateRef, Payload>
     }
 }
 
-impl<Input: Eq + Hash + Clone, StateRef: Clone, Payload: Clone> NFAEHashState<Input, StateRef, Payload> {
+impl<Input: Eq + Hash + Clone, StateRef: Clone, Payload: Clone> NFAEHashState<Input,
+                                                                              StateRef,
+                                                                              Payload> {
     fn drop_epsilons(&self) -> NFAHashState<Input, StateRef, Payload> {
         NFAHashState {
             transitions: self.transitions.clone(),
@@ -266,6 +268,67 @@ impl<Input: Eq + Hash + Clone, Payload: Clone> NFAE<Input, Payload> {
         NFAHashState {
             transitions: st.transitions.clone(),
             payload: st.payload.clone(),
+        }
+    }
+
+    /// This is an implementation of Tarjan's Strongly Connected Components algorithm. The nice
+    /// property of this SCC algorithm is that it gives the SCC's in reverse topological order.
+    fn scc(&self) -> (Vec<usize>, Vec<Vec<usize>>) {
+        let mut index = 0;
+        let mut st_index = vec![::std::usize::MAX; self.states.len()];
+        let mut st_lowlink = vec![::std::usize::MAX; self.states.len()];
+        let mut scc_stack = Vec::new();
+        let mut stack_set = HashSet::new();
+        let mut scc_s = Vec::new();
+
+        for st_ref in 0..self.states.len() {
+            if st_index[st_ref] == ::std::usize::MAX {
+                self.scc_strongconnect(st_ref,
+                                       &mut index,
+                                       &mut st_index,
+                                       &mut st_lowlink,
+                                       &mut scc_stack,
+                                       &mut stack_set,
+                                       &mut scc_s);
+            }
+        }
+        (st_lowlink, scc_s)
+    }
+
+    fn scc_strongconnect(&self,
+                         from: usize,
+                         index: &mut usize,
+                         st_index: &mut [usize],
+                         st_lowlink: &mut [usize],
+                         scc_stack: &mut Vec<usize>,
+                         stack_set: &mut HashSet<usize>,
+                         scc_s: &mut Vec<Vec<usize>>) {
+        st_index[from] = *index;
+        st_lowlink[from] = *index;
+        *index += 1;
+
+        scc_stack.push(from);
+        stack_set.insert(from);
+
+        for &to in &self.states[from].e_transition {
+            if st_index[to] == ::std::usize::MAX {
+                self.scc_strongconnect(to, index, st_index, st_lowlink, scc_stack, stack_set, scc_s);
+                st_lowlink[from] = ::std::cmp::min(st_lowlink[from], st_lowlink[to]);
+            } else if stack_set.contains(&to) {
+                st_lowlink[from] = ::std::cmp::min(st_lowlink[from], st_index[to]);
+            }
+        }
+
+        if st_lowlink[from] == st_index[from] {
+            let mut scc = Vec::new();
+            while let Some(st_ref) = scc_stack.pop() {
+                stack_set.remove(&st_ref);
+                scc.push(st_ref);
+                if st_ref == from {
+                    break;
+                }
+            }
+            scc_s.push(scc);
         }
     }
 }
