@@ -280,16 +280,66 @@ impl<Input: Eq + Hash + Clone, Payload: Clone> NFAE<Input, Payload> {
         let mut scc_stack = Vec::new();
         let mut stack_set = HashSet::new();
         let mut scc_s = Vec::new();
+        let mut call_stack = Vec::new();
 
         for st_ref in 0..self.states.len() {
             if st_index[st_ref] == ::std::usize::MAX {
-                self.scc_strongconnect(st_ref,
-                                       &mut index,
-                                       &mut st_index,
-                                       &mut st_lowlink,
-                                       &mut scc_stack,
-                                       &mut stack_set,
-                                       &mut scc_s);
+                // recursive call setup, and set arguments for call
+                let mut from = st_ref;
+                let mut iter = self.states[from].e_transition.iter();
+                // first part of the call
+                st_index[from] = index;
+                st_lowlink[from] = index;
+                index += 1;
+
+                scc_stack.push(from);
+                stack_set.insert(from);
+                'call: loop {
+                    loop {
+                        if let Some(&to) = iter.next() {
+                            if st_index[to] == ::std::usize::MAX {
+                                // push work to resume after return
+                                call_stack.push((from, iter));
+                                // set arguments for call
+                                from = to;
+                                iter = self.states[from].e_transition.iter();
+                                // first part of the call
+                                st_index[from] = index;
+                                st_lowlink[from] = index;
+                                index += 1;
+
+                                scc_stack.push(from);
+                                stack_set.insert(from);
+                                // start shared code for call
+                                continue 'call;
+                            } else if stack_set.contains(&to) {
+                                st_lowlink[from] = ::std::cmp::min(st_lowlink[from], st_index[to]);
+                            }
+                        } else {
+                            break;
+                        }
+                    }
+
+                    if st_lowlink[from] == st_index[from] {
+                        let mut scc = Vec::new();
+                        while let Some(st_ref) = scc_stack.pop() {
+                            stack_set.remove(&st_ref);
+                            scc.push(st_ref);
+                            if st_ref == from {
+                                break;
+                            }
+                        }
+                        scc_s.push(scc);
+                    }
+
+                    // return from call by
+                    if let Some((f, i)) = call_stack.pop() {
+                        from = f;
+                        iter = i;
+                    } else {
+                        break;
+                    }
+                }
             }
         }
         (st_lowlink, scc_s)
@@ -312,7 +362,15 @@ impl<Input: Eq + Hash + Clone, Payload: Clone> NFAE<Input, Payload> {
 
         for &to in &self.states[from].e_transition {
             if st_index[to] == ::std::usize::MAX {
-                self.scc_strongconnect(to, index, st_index, st_lowlink, scc_stack, stack_set, scc_s);
+                // `to` will be added to `scc_stack`
+                self.scc_strongconnect(to,
+                                       index,
+                                       st_index,
+                                       st_lowlink,
+                                       scc_stack,
+                                       stack_set,
+                                       scc_s);
+                // *only* if an SCC if found, `to` is remove from `scc_stack`
                 st_lowlink[from] = ::std::cmp::min(st_lowlink[from], st_lowlink[to]);
             } else if stack_set.contains(&to) {
                 st_lowlink[from] = ::std::cmp::min(st_lowlink[from], st_index[to]);
