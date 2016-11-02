@@ -273,6 +273,57 @@ impl<Input: Eq + Hash + Clone, Payload: Clone> NFAE<Input, Payload> {
 
     /// This is an implementation of Tarjan's Strongly Connected Components algorithm. The nice
     /// property of this SCC algorithm is that it gives the SCC's in reverse topological order.
+    /// Note that the normal version of this algorithm is recursive. The implementation below is not
+    /// recursive, but instead has an explicit `call_stack`. To make the whole thing a little less
+    /// unwieldy, the function is split up into phases that mostly directly transition to each
+    /// other. See the `scc_*` function for the different phases. For reference, here is the
+    /// recursive version:
+    /// ```rust
+    /// fn scc_strongconnect(&self,
+    ///                      from: usize,
+    ///                      index: &mut usize,
+    ///                      st_index: &mut [usize],
+    ///                      st_lowlink: &mut [usize],
+    ///                      scc_stack: &mut Vec<usize>,
+    ///                      stack_set: &mut HashSet<usize>,
+    ///                      scc_s: &mut Vec<Vec<usize>>) {
+    ///     st_index[from] = *index;
+    ///     st_lowlink[from] = *index;
+    ///     *index += 1;
+    ///
+    ///     scc_stack.push(from);
+    ///     stack_set.insert(from);
+    ///
+    ///     for &to in &self.states[from].e_transition {
+    ///         if st_index[to] == ::std::usize::MAX {
+    ///             // `to` will be added to `scc_stack`
+    ///             self.scc_strongconnect(to,
+    ///                                    index,
+    ///                                    st_index,
+    ///                                    st_lowlink,
+    ///                                    scc_stack,
+    ///                                    stack_set,
+    ///                                    scc_s);
+    ///             // *only* if an SCC if found, `to` is remove from `scc_stack`
+    ///             st_lowlink[from] = ::std::cmp::min(st_lowlink[from], st_lowlink[to]);
+    ///         } else if stack_set.contains(&to) {
+    ///             st_lowlink[from] = ::std::cmp::min(st_lowlink[from], st_index[to]);
+    ///         }
+    ///     }
+    ///
+    ///     if st_lowlink[from] == st_index[from] {
+    ///         let mut scc = Vec::new();
+    ///         while let Some(st_ref) = scc_stack.pop() {
+    ///             stack_set.remove(&st_ref);
+    ///             scc.push(st_ref);
+    ///             if st_ref == from {
+    ///                 break;
+    ///             }
+    ///         }
+    ///         scc_s.push(scc);
+    ///     }
+    /// }
+    /// ```
     fn scc(&self) -> (Vec<usize>, Vec<Vec<usize>>) {
         let mut index = 0;
         let mut st_index = vec![::std::usize::MAX; self.states.len()];
@@ -284,60 +335,48 @@ impl<Input: Eq + Hash + Clone, Payload: Clone> NFAE<Input, Payload> {
 
         for st_ref in 0..self.states.len() {
             if st_index[st_ref] == ::std::usize::MAX {
-                // recursive call setup, and set arguments for call
-                let mut from = st_ref;
-                let mut iter = self.states[from].e_transition.iter();
-                // first part of the call
-                st_index[from] = index;
-                st_lowlink[from] = index;
-                index += 1;
+                call_stack.push(SccState::Init(st_ref));
+                while let Some(state) = call_stack.pop() {
+                    match state {
+                        SccState::Init(from) => {
+                            self.scc_init(from,
+                                          &mut index,
+                                          &mut st_index,
+                                          &mut st_lowlink,
+                                          &mut scc_stack,
+                                          &mut stack_set);
 
-                scc_stack.push(from);
-                stack_set.insert(from);
-                'call: loop {
-                    loop {
-                        if let Some(&to) = iter.next() {
-                            if st_index[to] == ::std::usize::MAX {
-                                // push work to resume after return
-                                call_stack.push((from, iter));
-                                // set arguments for call
-                                from = to;
-                                iter = self.states[from].e_transition.iter();
-                                // first part of the call
-                                st_index[from] = index;
-                                st_lowlink[from] = index;
-                                index += 1;
-
-                                scc_stack.push(from);
-                                stack_set.insert(from);
-                                // start shared code for call
-                                continue 'call;
-                            } else if stack_set.contains(&to) {
-                                st_lowlink[from] = ::std::cmp::min(st_lowlink[from], st_index[to]);
-                            }
-                        } else {
-                            break;
+                            call_stack.push(SccState::Dfs(from,
+                                                          self.states[from]
+                                                              .e_transition
+                                                              .iter()
+                                                              .cloned()))
                         }
-                    }
+                        SccState::RecCallReturn(from, to, iter) => {
+                            st_lowlink[from] = ::std::cmp::min(st_lowlink[from], st_lowlink[to]);
 
-                    if st_lowlink[from] == st_index[from] {
-                        let mut scc = Vec::new();
-                        while let Some(st_ref) = scc_stack.pop() {
-                            stack_set.remove(&st_ref);
-                            scc.push(st_ref);
-                            if st_ref == from {
-                                break;
+                            call_stack.push(SccState::Dfs(from, iter));
+                        }
+                        SccState::Dfs(from, mut iter) => {
+                            if let Some(to) = self.scc_dfs(from,
+                                                           &mut st_index,
+                                                           &mut st_lowlink,
+                                                           &mut stack_set,
+                                                           &mut iter) {
+                                call_stack.push(SccState::RecCallReturn(from, to, iter));
+                                call_stack.push(SccState::Init(to));
+                            } else {
+                                call_stack.push(SccState::SccConstruction(from));
                             }
                         }
-                        scc_s.push(scc);
-                    }
-
-                    // return from call by
-                    if let Some((f, i)) = call_stack.pop() {
-                        from = f;
-                        iter = i;
-                    } else {
-                        break;
+                        SccState::SccConstruction(from) => {
+                            self.scc_construct(from,
+                                               &mut st_index,
+                                               &mut st_lowlink,
+                                               &mut scc_stack,
+                                               &mut stack_set,
+                                               &mut scc_s)
+                        }
                     }
                 }
             }
@@ -345,38 +384,48 @@ impl<Input: Eq + Hash + Clone, Payload: Clone> NFAE<Input, Payload> {
         (st_lowlink, scc_s)
     }
 
-    fn scc_strongconnect(&self,
-                         from: usize,
-                         index: &mut usize,
-                         st_index: &mut [usize],
-                         st_lowlink: &mut [usize],
-                         scc_stack: &mut Vec<usize>,
-                         stack_set: &mut HashSet<usize>,
-                         scc_s: &mut Vec<Vec<usize>>) {
+    #[inline]
+    fn scc_init(&self,
+                from: usize,
+                index: &mut usize,
+                st_index: &mut [usize],
+                st_lowlink: &mut [usize],
+                scc_stack: &mut Vec<usize>,
+                stack_set: &mut HashSet<usize>) {
         st_index[from] = *index;
         st_lowlink[from] = *index;
         *index += 1;
 
         scc_stack.push(from);
         stack_set.insert(from);
+    }
 
-        for &to in &self.states[from].e_transition {
+    #[inline]
+    fn scc_dfs<I: Iterator<Item = usize>>(&self,
+                                          from: usize,
+                                          st_index: &mut [usize],
+                                          st_lowlink: &mut [usize],
+                                          stack_set: &mut HashSet<usize>,
+                                          iter: &mut I)
+                                          -> Option<usize> {
+        while let Some(to) = iter.next() {
             if st_index[to] == ::std::usize::MAX {
-                // `to` will be added to `scc_stack`
-                self.scc_strongconnect(to,
-                                       index,
-                                       st_index,
-                                       st_lowlink,
-                                       scc_stack,
-                                       stack_set,
-                                       scc_s);
-                // *only* if an SCC if found, `to` is remove from `scc_stack`
-                st_lowlink[from] = ::std::cmp::min(st_lowlink[from], st_lowlink[to]);
+                return Some(to);
             } else if stack_set.contains(&to) {
                 st_lowlink[from] = ::std::cmp::min(st_lowlink[from], st_index[to]);
             }
         }
+        None
+    }
 
+    #[inline]
+    fn scc_construct(&self,
+                     from: usize,
+                     st_index: &mut [usize],
+                     st_lowlink: &mut [usize],
+                     scc_stack: &mut Vec<usize>,
+                     stack_set: &mut HashSet<usize>,
+                     scc_s: &mut Vec<Vec<usize>>) {
         if st_lowlink[from] == st_index[from] {
             let mut scc = Vec::new();
             while let Some(st_ref) = scc_stack.pop() {
@@ -389,6 +438,13 @@ impl<Input: Eq + Hash + Clone, Payload: Clone> NFAE<Input, Payload> {
             scc_s.push(scc);
         }
     }
+}
+
+enum SccState<I: Iterator<Item = usize>> {
+    Init(usize),
+    Dfs(usize, I),
+    RecCallReturn(usize, usize, I),
+    SccConstruction(usize),
 }
 
 // DFAs
