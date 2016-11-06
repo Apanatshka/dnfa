@@ -187,66 +187,14 @@ impl<Input: Eq + Hash + Clone, Payload: Clone> NFAE<Input, Payload> {
     /// Cycles are replaced by single states
     /// States that aren't reachable from `AUTO_START` are preserved (not by design)
     pub fn to_nfa(&self) -> NFA<Input, Payload> {
+        // The SCCs are in reverse topo order for optimal epsilon
+        let (sccs, renumbering) = self.scc();
         // the new states
-        let mut states: Vec<NFAHashState<Input, usize, Payload>> = Vec::new();
-        // Maps visited stateref to offset in stack
-        let mut visiting: HashMap<usize, usize> = HashMap::new();
-        // Maps staterefs that are finished to staterefs in the new NFA
-        let mut renumbering: Vec<usize> = vec![::std::usize::MAX; self.states.len()];
-        // Stack of states we've seen/ are working on.
-        let mut stack: Vec<usize> = vec![AUTO_START];
-        // Lowest non-visited
-        let mut unvisited = 0;
+        let mut states: Vec<NFAHashState<Input, usize, Payload>> = Vec::with_capacity(sccs.len());
 
-        loop {
-            let nfae_st_ref = stack[stack.len() - 1];
-            let nfae_st = &self.states[nfae_st_ref];
-            let new_state = if !nfae_st.e_transition.is_empty() {
-                for &st_ref in &nfae_st.e_transition {
-                    match visiting.get(&st_ref) {
-                        Some(&::std::usize::MAX) => continue,
-                        Some(&offset) => {
-                            unimplemented!(); //TODO: loop detected
-                            break;
-                        }
-                        None => {
-                            visiting.insert(st_ref, stack.len());
-                            stack.push(st_ref);
-                            break;
-                        }
-                    }
-                }
-                // No more epsilons to do
-                Self::eps_state_to_nfa(nfae_st, &renumbering, &states)
-            } else {
-                if nfae_st_ref == AUTO_START && states.len() != AUTO_START {
-                    states[AUTO_START] = nfae_st.drop_epsilons();
-                    continue;
-                }
-                if states.len() == AUTO_START && nfae_st_ref != AUTO_START {
-                    states.push(NFAHashState::new());
-                }
-                nfae_st.drop_epsilons()
-            };
-            renumbering[nfae_st_ref] = states.len();
-            states.push(new_state);
-            visiting.remove(&nfae_st_ref);
-            stack.pop();
-            while renumbering[unvisited] != ::std::usize::MAX && unvisited < self.states.len() {
-                unvisited += 1;
-            }
-            if stack.is_empty() && unvisited < self.states.len() {
-                stack.push(unvisited);
-            } else {
-                break;
-            }
-        }
-
-        for state in &mut states {
-            for (_, st_refs) in &mut state.transitions {
-                let new_st_refs = st_refs.iter().map(|&st_ref| renumbering[st_ref]).collect();
-                mem::replace(st_refs, new_st_refs);
-            }
+        for scc in sccs {
+            states[renumbering[scc[0]]] =
+                Self::scc_to_nfa_state(&scc, &self.states, &renumbering, &states);
         }
 
         NFA {
@@ -255,18 +203,37 @@ impl<Input: Eq + Hash + Clone, Payload: Clone> NFAE<Input, Payload> {
         }
     }
 
-    fn eps_state_to_nfa(st: &NFAEHashState<Input, usize, Payload>,
+    fn scc_to_nfa_state(scc: &[usize],
+                        nfae_states: &[NFAEHashState<Input, usize, Payload>],
                         renumbering: &[usize],
-                        states: &[NFAHashState<Input, usize, Payload>])
+                        nfa_states: &[NFAHashState<Input, usize, Payload>])
                         -> NFAHashState<Input, usize, Payload> {
-        let mut transitions: HashMap<Input, HashSet<usize>> = st.transitions.clone();
-        for &st_ref in &st.e_transition {
-            renumbering[st_ref];
-            transitions.extend(states[st_ref].transitions.clone());
+        use std::iter::FromIterator;
+        macro_rules! renumber {
+            ($st:expr) => {
+                $st.transitions
+                   .iter()
+                   .map(|(i, to)| (i.clone(), to.iter().map(|&s| renumbering[s]).collect()))
+            }
+        }
+        let scc_set = HashSet::from_iter(scc.iter().cloned());
+        let mut transition_set: HashSet<usize> = HashSet::new();
+        for &st_ref in scc {
+            let st = &nfae_states[st_ref];
+            for st_ref in st.transitions.values() {
+                transition_set.extend(st_ref.difference(&scc_set));
+            }
+            transition_set.extend(st.e_transition.difference(&scc_set));
+        }
+        let mut transitions: HashMap<Input, HashSet<usize>> = scc_set.into_iter()
+            .flat_map(|st_ref| renumber!(nfae_states[st_ref]))
+            .collect();
+        for st_ref in transition_set {
+            transitions.extend(nfa_states[renumbering[st_ref]].transitions.clone());
         }
         NFAHashState {
-            transitions: st.transitions.clone(),
-            payload: st.payload.clone(),
+            transitions: transitions,
+            payload: nfae_states[scc[0]].payload.clone(),
         }
     }
 
@@ -323,7 +290,7 @@ impl<Input: Eq + Hash + Clone, Payload: Clone> NFAE<Input, Payload> {
     ///     }
     /// }
     /// ```
-    fn scc(&self) -> Vec<usize> {
+    fn scc(&self) -> (Vec<Vec<usize>>, Vec<usize>) {
         use scc::SccMutState;
 
         let mut scc_state = SccMutState::new(self.states.len());
@@ -364,7 +331,7 @@ impl<Input: Eq + Hash + Clone, Payload: Clone> NFAE<Input, Payload> {
                 }
             }
         }
-        scc_state.sccs_mapping()
+        scc_state.sccs_and_mapping()
     }
 }
 

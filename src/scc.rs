@@ -6,6 +6,7 @@ pub struct SccMutState {
     lowlink: Vec<usize>, // StateRef -> Index
     scc_stack: Vec<usize>, // Stack<StateRef>
     scc_set: HashMap<usize, usize>, // Map<StateRef, StackOffset> of the above stack
+    sccs: Vec<Vec<usize>>, // Stack<Set<StateRef>> the SCCs in reverse topo order
 }
 
 impl SccMutState {
@@ -16,6 +17,7 @@ impl SccMutState {
             lowlink: vec![::std::usize::MAX; states],
             scc_stack: Vec::new(),
             scc_set: HashMap::new(),
+            sccs: Vec::new(),
         }
     }
 
@@ -42,9 +44,9 @@ impl SccMutState {
     }
 
     pub fn next_state<I: Iterator<Item = usize>>(&mut self,
-                                             from: usize,
-                                             iter: &mut I)
-                                             -> Option<usize> {
+                                                 from: usize,
+                                                 iter: &mut I)
+                                                 -> Option<usize> {
         // Note that the `iter` doesn't have to be fully traversed
         for to in iter {
             if !self.visited(to) {
@@ -63,18 +65,19 @@ impl SccMutState {
             for &st_ref in &scc {
                 self.scc_stack.remove(st_ref);
             }
+            self.sccs.push(scc);
         }
     }
 
-    pub fn sccs(&self) -> Vec<Vec<usize>> {
-        let mut sccs = vec![Vec::new(); self.count-1];
-        for (st_ref, &scc_idx) in self.lowlink.iter().enumerate() {
-            sccs[scc_idx].push(st_ref);
-        }
-        sccs
+    pub fn sccs(self) -> Vec<Vec<usize>> {
+        self.sccs
     }
 
     pub fn sccs_mapping(self) -> Vec<usize> {
         self.lowlink
+    }
+
+    pub fn sccs_and_mapping(self) -> (Vec<Vec<usize>>, Vec<usize>) {
+        (self.sccs, self.lowlink)
     }
 }
