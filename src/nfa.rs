@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::BTreeSet;
@@ -324,119 +323,48 @@ impl<Input: Eq + Hash + Clone, Payload: Clone> NFAE<Input, Payload> {
     ///     }
     /// }
     /// ```
-    fn scc(&self) -> (Vec<usize>, Vec<Vec<usize>>) {
-        let mut index = 0;
-        let mut st_index = vec![::std::usize::MAX; self.states.len()];
-        let mut st_lowlink = vec![::std::usize::MAX; self.states.len()];
-        let mut scc_stack = Vec::new();
-        let mut stack_set = HashSet::new();
-        let mut scc_s = Vec::new();
+    fn scc(&self) -> Vec<usize> {
+        use scc::SccMutState;
+
+        let mut scc_state = SccMutState::new(self.states.len());
         let mut call_stack = Vec::new();
 
         for st_ref in 0..self.states.len() {
-            if st_index[st_ref] == ::std::usize::MAX {
-                call_stack.push(SccState::Init(st_ref));
-                while let Some(state) = call_stack.pop() {
-                    match state {
-                        SccState::Init(from) => {
-                            self.scc_init(from,
-                                          &mut index,
-                                          &mut st_index,
-                                          &mut st_lowlink,
-                                          &mut scc_stack,
-                                          &mut stack_set);
-
-                            call_stack.push(SccState::Dfs(from,
-                                                          self.states[from]
-                                                              .e_transition
-                                                              .iter()
-                                                              .cloned()))
+            if !scc_state.visited(st_ref) {
+                let mut state = SccState::Init(st_ref);
+                loop {
+                    if let SccState::Init(from) = state {
+                        scc_state.init(from);
+                        state = SccState::Dfs(from,
+                                              self.states[from]
+                                                  .e_transition
+                                                  .iter()
+                                                  .cloned());
+                    }
+                    if let SccState::RecCallReturn(from, to, iter) = state {
+                        scc_state.update(from, to);
+                        state = SccState::Dfs(from, iter);
+                    }
+                    if let SccState::Dfs(from, mut iter) = state {
+                        if let Some(to) = scc_state.next_state(from, &mut iter) {
+                            call_stack.push(SccState::RecCallReturn(from, to, iter));
+                            state = SccState::Init(to);
+                        } else {
+                            state = SccState::SccConstruction(from);
                         }
-                        SccState::RecCallReturn(from, to, iter) => {
-                            st_lowlink[from] = ::std::cmp::min(st_lowlink[from], st_lowlink[to]);
-
-                            call_stack.push(SccState::Dfs(from, iter));
-                        }
-                        SccState::Dfs(from, mut iter) => {
-                            if let Some(to) = self.scc_dfs(from,
-                                                           &mut st_index,
-                                                           &mut st_lowlink,
-                                                           &mut stack_set,
-                                                           &mut iter) {
-                                call_stack.push(SccState::RecCallReturn(from, to, iter));
-                                call_stack.push(SccState::Init(to));
-                            } else {
-                                call_stack.push(SccState::SccConstruction(from));
-                            }
-                        }
-                        SccState::SccConstruction(from) => {
-                            self.scc_construct(from,
-                                               &mut st_index,
-                                               &mut st_lowlink,
-                                               &mut scc_stack,
-                                               &mut stack_set,
-                                               &mut scc_s)
+                    }
+                    if let SccState::SccConstruction(from) = state {
+                        scc_state.construct_scc(from);
+                        if let Some(st) = call_stack.pop() {
+                            state = st
+                        } else {
+                            break;
                         }
                     }
                 }
             }
         }
-        (st_lowlink, scc_s)
-    }
-
-    #[inline]
-    fn scc_init(&self,
-                from: usize,
-                index: &mut usize,
-                st_index: &mut [usize],
-                st_lowlink: &mut [usize],
-                scc_stack: &mut Vec<usize>,
-                stack_set: &mut HashSet<usize>) {
-        st_index[from] = *index;
-        st_lowlink[from] = *index;
-        *index += 1;
-
-        scc_stack.push(from);
-        stack_set.insert(from);
-    }
-
-    #[inline]
-    fn scc_dfs<I: Iterator<Item = usize>>(&self,
-                                          from: usize,
-                                          st_index: &mut [usize],
-                                          st_lowlink: &mut [usize],
-                                          stack_set: &mut HashSet<usize>,
-                                          iter: &mut I)
-                                          -> Option<usize> {
-        while let Some(to) = iter.next() {
-            if st_index[to] == ::std::usize::MAX {
-                return Some(to);
-            } else if stack_set.contains(&to) {
-                st_lowlink[from] = ::std::cmp::min(st_lowlink[from], st_index[to]);
-            }
-        }
-        None
-    }
-
-    #[inline]
-    fn scc_construct(&self,
-                     from: usize,
-                     st_index: &mut [usize],
-                     st_lowlink: &mut [usize],
-                     scc_stack: &mut Vec<usize>,
-                     stack_set: &mut HashSet<usize>,
-                     scc_s: &mut Vec<Vec<usize>>) {
-        if st_lowlink[from] == st_index[from] {
-            let mut scc = Vec::new();
-            while let Some(st_ref) = scc_stack.pop() {
-                stack_set.remove(&st_ref);
-                scc.push(st_ref);
-                if st_ref == from {
-                    break;
-                }
-            }
-            scc_s.push(scc);
-        }
+        scc_state.sccs_mapping()
     }
 }
 
