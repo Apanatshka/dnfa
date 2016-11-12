@@ -217,22 +217,20 @@ impl<Input: Eq + Hash + Clone, Payload: Clone> NFAE<Input, Payload> {
             }
         }
         let scc_set = HashSet::from_iter(scc.iter().cloned());
-        let mut transition_set: HashSet<usize> = HashSet::new();
-        for &st_ref in scc {
-            let st = &nfae_states[st_ref];
-            for st_ref in st.transitions.values() {
-                transition_set.extend(st_ref.difference(&scc_set));
-            }
-            transition_set.extend(st.e_transition.difference(&scc_set));
-        }
+        let transition_set: HashSet<usize> = scc.iter()
+            .flat_map(|&st_ref| nfae_states[st_ref].e_transition.difference(&scc_set).cloned())
+            .collect();
         let mut transitions: HashMap<Input, HashSet<usize>> = scc_set.into_iter()
             .flat_map(|st_ref| renumber!(nfae_states[st_ref]))
             .collect();
+        // We can do this because the reverse topo order guarantees
+        //  `nfa_states[renumbering[st_ref]]` was already added :)
         for st_ref in transition_set {
             transitions.extend(nfa_states[renumbering[st_ref]].transitions.clone());
         }
         NFAHashState {
             transitions: transitions,
+            // TODO: Support fusing the payloads.
             payload: nfae_states[scc[0]].payload.clone(),
         }
     }
