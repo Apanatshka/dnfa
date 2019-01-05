@@ -1,4 +1,4 @@
-extern crate dnfa;
+
 
 use std::env;
 

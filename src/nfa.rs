@@ -6,8 +6,8 @@ use std::collections::HashMap;
 use std::collections::BTreeSet;
 use std::fmt;
 
-use automaton::{Automaton, Match};
-use dfa::{DFA, DFAState};
+use crate::automaton::{Automaton, Match};
+use crate::dfa::{DFA, DFAState};
 
 pub const AUTO_START: usize = 0;
 pub const AUTO_STUCK: usize = 1;
@@ -122,7 +122,7 @@ impl NFA {
     }
 
     pub fn ignore_prefixes(&mut self) {
-        self.alphabet = (0...255).collect();
+        self.alphabet = (0..=255).collect();
         for &byte in &self.alphabet {
             self.states[AUTO_START]
                 .transitions
@@ -133,7 +133,7 @@ impl NFA {
     }
 
     pub fn ignore_postfixes(&mut self) {
-        self.alphabet = (0...255).collect();
+        self.alphabet = (0..=255).collect();
         let finals = self.states.iter_mut().enumerate().filter(|&(_, ref st)| st.is_final());
         for (fin, state) in finals {
             for &byte in &self.alphabet {
@@ -146,7 +146,7 @@ impl NFA {
         let finals = BitVec::from_fn(self.states.len(), |i| self.states[i].is_final());
         let mut states = Vec::with_capacity(self.states.len());
         for state in self.states {
-            states.push(try!(state.into_dfa()));
+            states.push(state.into_dfa()?);
         }
         Ok(DFA::new(states.into_boxed_slice(), finals, self.dict))
     }
@@ -403,7 +403,7 @@ impl Automaton<Input> for NFA {
 impl fmt::Debug for NFA {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         macro_rules! w {
-            ($($tt:tt)*) => { try!(write!(f, $($tt)*)) }
+            ($($tt:tt)*) => { write!(f, $($tt)*)? }
         }
         for (i, state) in (*self.states).into_iter().enumerate() {
             w!("{}", i);
@@ -571,7 +571,7 @@ mod tests {
         assert!(!nfa.apply("abb".as_bytes()).is_empty());
     }
 
-    use automaton::Automaton;
+    use crate::automaton::Automaton;
     use std::iter;
 
     fn haystack_same(letter: char) -> String {

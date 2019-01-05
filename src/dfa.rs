@@ -4,8 +4,8 @@ use self::bit_vec::BitVec;
 use std::mem;
 use std::fmt;
 
-use nfa::{AUTO_START, AUTO_STUCK};
-use automaton::{Automaton, Match};
+use crate::nfa::{AUTO_START, AUTO_STUCK};
+use crate::automaton::{Automaton, Match};
 
 pub type Input = u8;
 pub type StateNumber = usize;
@@ -200,19 +200,19 @@ macro_rules! debug_impl {
                 let start = compute_start(&self);
                 for (i, state) in (*self.states).into_iter().enumerate() {
                     if i == AUTO_STUCK {
-                        try!(write!(f, "{} (stuck),\n", AUTO_STUCK));
+                        write!(f, "{} (stuck),\n", AUTO_STUCK)?;
                         continue;
                     }
-                    try!(write!(f, "{}", i));
+                    write!(f, "{}", i)?;
                     if i == AUTO_START {
-                        try!(write!(f, " (start)"));
+                        write!(f, " (start)")?;
                     }
                     if compute_finality(&self, state, i) {
-                        try!(write!(f, " (final)"));
+                        write!(f, " (final)")?;
                     }
-                    try!(write!(f, ": {{"));
+                    write!(f, ": {{")?;
                     if !state.transitions.is_empty() {
-                        try!(write!(f, "\n"));
+                        write!(f, "\n")?;
                     }
                     let mut last_c = 0;
                     let mut iter = (*state.transitions)
@@ -226,17 +226,17 @@ macro_rules! debug_impl {
                             }
                             let tr_no = compute_tr_no(tr, start);
                             if c == last_c {
-                                try!(write!(f, "  {:?}: {:?},\n", c as u8 as char, tr_no));
+                                write!(f, "  {:?}: {:?},\n", c as u8 as char, tr_no)?;
                             } else {
-                                try!(write!(f, "  [{:?}-{:?}]: {:?},\n",
+                                write!(f, "  [{:?}-{:?}]: {:?},\n",
                                    last_c as u8 as char,
                                    (c as u8) as char,
-                                   tr_no));
+                                   tr_no)?;
                             }
                             last_c = c2;
                         }
                     }
-                    try!(write!(f, "}},\n"));
+                    write!(f, "}},\n")?;
                 }
                 Ok(())
             }
@@ -276,7 +276,7 @@ debug_impl!(
 
 #[cfg(test)]
 mod tests {
-    use nfa::NFA;
+    use crate::nfa::NFA;
 
     static BASIC_DICTIONARY: &'static [&'static str] = &["a", "ab", "bab", "bc", "bca", "c", "caa"];
 
@@ -330,7 +330,7 @@ mod tests {
         assert!(!dfa.apply("abb".as_bytes()).is_empty());
     }
 
-    use automaton::Automaton;
+    use crate::automaton::Automaton;
     use std::iter;
 
     fn haystack_same(letter: char) -> String {

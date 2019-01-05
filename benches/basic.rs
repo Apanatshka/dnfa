@@ -1,7 +1,6 @@
 #![feature(test)]
 
 extern crate test;
-extern crate dnfa;
 
 use std::iter;
 

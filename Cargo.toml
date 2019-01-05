@@ -2,6 +2,7 @@
 name = "dnfa"
 version = "0.1.0"
 authors = ["Jeff Smits <jeff.smits@gmail.com>"]
+edition = "2018"
 
 [dependencies]
 bit-vec = "0.4.3"

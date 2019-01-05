@@ -1,7 +1,6 @@
 #![feature(test)]
 
 extern crate test;
-extern crate dnfa;
 
 // These benchmark tests are derived from the ones in https://github.com/burntsushi/aho-corasick
 
