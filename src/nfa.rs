@@ -2,12 +2,12 @@ extern crate bit_vec;
 
 use self::bit_vec::BitVec;
 use std::collections::BTreeMap;
-use std::collections::HashMap;
 use std::collections::BTreeSet;
+use std::collections::HashMap;
 use std::fmt;
 
 use crate::automaton::{Automaton, Match};
-use crate::dfa::{DFA, DFAState};
+use crate::dfa::{DFAState, DFA};
 
 pub const AUTO_START: usize = 0;
 pub const AUTO_STUCK: usize = 1;
@@ -42,13 +42,18 @@ impl NFA {
     }
 
     pub fn from_dictionary<P, I>(dict: I) -> Self
-        where P: AsRef<[u8]>,
-              I: IntoIterator<Item = P> + Clone
+    where
+        P: AsRef<[u8]>,
+        I: IntoIterator<Item = P> + Clone,
     {
         let mut nfa = NFA {
             alphabet: Vec::new(),
             states: Vec::new(),
-            dict: dict.clone().into_iter().map(|p| p.as_ref().to_vec()).collect(),
+            dict: dict
+                .clone()
+                .into_iter()
+                .map(|p| p.as_ref().to_vec())
+                .collect(),
             depth_map: BTreeMap::new(),
         };
         // the start and stuck states
@@ -66,7 +71,8 @@ impl NFA {
                 if let Some(&state) = nfa.states[cur_state]
                     .transitions
                     .get(&byte)
-                    .map_or(None, |x| x.iter().next()) {
+                    .map_or(None, |x| x.iter().next())
+                {
                     cur_state = state;
                 }
                 // Otherwise add a new transition, and add the corresponding state
@@ -107,10 +113,13 @@ impl NFA {
                 visited[node] = true;
                 for &byte in &self.alphabet {
                     if let Some(states) = self.states[node].transitions.get(&byte) {
-                        nxt_nodes.extend(states.into_iter()
-                            .filter(|&&n| !visited[n])
-                            .cloned()
-                            .collect::<BTreeSet<StateNumber>>());
+                        nxt_nodes.extend(
+                            states
+                                .into_iter()
+                                .filter(|&&n| !visited[n])
+                                .cloned()
+                                .collect::<BTreeSet<StateNumber>>(),
+                        );
                     }
                 }
             }
@@ -134,10 +143,18 @@ impl NFA {
 
     pub fn ignore_postfixes(&mut self) {
         self.alphabet = (0..=255).collect();
-        let finals = self.states.iter_mut().enumerate().filter(|&(_, ref st)| st.is_final());
+        let finals = self
+            .states
+            .iter_mut()
+            .enumerate()
+            .filter(|&(_, ref st)| st.is_final());
         for (fin, state) in finals {
             for &byte in &self.alphabet {
-                state.transitions.entry(byte).or_insert_with(BTreeSet::new).insert(fin);
+                state
+                    .transitions
+                    .entry(byte)
+                    .or_insert_with(BTreeSet::new)
+                    .insert(fin);
             }
         }
     }
@@ -164,7 +181,10 @@ impl NFA {
             cur_states = nxt_states;
             nxt_states = BTreeSet::new();
         }
-        cur_states.iter().flat_map(|&state| self.states[state].pattern_ends.clone()).collect()
+        cur_states
+            .iter()
+            .flat_map(|&state| self.states[state].pattern_ends.clone())
+            .collect()
     }
 
     // Changed from a recursive algorithm to a worklist (stack) algorithm
@@ -248,14 +268,16 @@ impl NFA {
             ($($tt:tt)*) => { {write!(out, $($tt)*)}.unwrap() }
         }
 
-        let dict_comma_string = self.dict
+        let dict_comma_string = self
+            .dict
             .clone()
             .into_iter()
             .map(|x| String::from_utf8_lossy(x.as_ref()).into_owned())
             .collect::<Vec<String>>()
             .join(", ");
 
-        w!(r#"
+        w!(
+            r#"
 digraph automaton {{
     label=<<FONT POINT-SIZE="20">{}</FONT>>;
     labelloc="l";
@@ -264,7 +286,8 @@ digraph automaton {{
     start [shape="none", label="", width=0];
     start -> 0;
 "#,
-           dict_comma_string);
+            dict_comma_string
+        );
 
         let mut original_edges = BTreeSet::new();
 
@@ -301,9 +324,7 @@ digraph automaton {{
                 if options.bold_dict_edges && original_edges.contains(&(from, to)) {
                     w!(" [style=bold]");
                 }
-                w!(" [label=\"{}\"];\n",
-                   implode_ranges(bytes)
-                       .join(", "));
+                w!(" [label=\"{}\"];\n", implode_ranges(bytes).join(", "));
             }
         }
 
@@ -319,7 +340,7 @@ fn implode_ranges(bytes: BTreeSet<u8>) -> Vec<String> {
         let mut start = start;
         let mut prev = start;
         for &cur in i {
-            if cur-1 != prev {
+            if cur - 1 != prev {
                 res.push(format!("{:?}-{:?}", start as char, prev as char));
                 start = cur;
             }
@@ -340,8 +361,9 @@ pub struct DotOptions {
 
 /// Flips a map that represents a non-injective multivalued function
 ///  to a map that represents the inverse non-injective multivalued function
-fn flip_multimap<K: Ord + Clone, V: Ord>(multimap: BTreeMap<K, BTreeSet<V>>)
-                                         -> BTreeMap<V, BTreeSet<K>> {
+fn flip_multimap<K: Ord + Clone, V: Ord>(
+    multimap: BTreeMap<K, BTreeSet<V>>,
+) -> BTreeMap<V, BTreeSet<K>> {
     let mut res = BTreeMap::new();
     for (k, vs) in multimap {
         for v in vs {
@@ -416,7 +438,8 @@ impl fmt::Debug for NFA {
             if self.states[i].is_final() {
                 w!(" (final)");
             }
-            let tr = state.transitions
+            let tr = state
+                .transitions
                 .iter()
                 .map(|(&c, s)| (c as char, s.clone()))
                 .collect::<BTreeMap<char, BTreeSet<StateNumber>>>();
@@ -449,7 +472,10 @@ impl NFAState {
                 None => unreachable!(),
             }
         }
-        Ok(DFAState::new(transitions.into_boxed_slice(), self.pattern_ends))
+        Ok(DFAState::new(
+            transitions.into_boxed_slice(),
+            self.pattern_ends,
+        ))
     }
 }
 

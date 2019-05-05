@@ -13,7 +13,8 @@ pub trait Automaton<Input: Ord> {
     fn get_match(&self, si: &Self::State, patt_no_offset: usize, text_offset: usize) -> Match;
 
     fn find<'i, 'a>(&'a self, s: &'i [Input]) -> Matches<'i, 'a, Input, Self>
-        where Self: Sized
+    where
+        Self: Sized,
     {
         Matches {
             aut: self,
@@ -52,7 +53,6 @@ pub struct Matches<'i, 'a, Input: 'i + Ord, A: 'a + Automaton<Input>> {
     offset: usize,
     state: A::State,
 }
-
 
 impl<'i, 'a, Input: Ord, A: Automaton<Input>> Iterator for Matches<'i, 'a, Input, A> {
     type Item = Match;

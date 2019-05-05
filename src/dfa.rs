@@ -1,11 +1,11 @@
 extern crate bit_vec;
 
 use self::bit_vec::BitVec;
-use std::mem;
 use std::fmt;
+use std::mem;
 
-use crate::nfa::{AUTO_START, AUTO_STUCK};
 use crate::automaton::{Automaton, Match};
+use crate::nfa::{AUTO_START, AUTO_STUCK};
 
 pub type Input = u8;
 pub type StateNumber = usize;
@@ -55,8 +55,8 @@ impl DFA {
 
     pub fn into_ddfa(self) -> Result<DDFA, ()> {
         let states_len = self.states.len();
-        let mut states = vec![DDFAState::new(Box::new([]), Vec::new(), false); states_len]
-            .into_boxed_slice();
+        let mut states =
+            vec![DDFAState::new(Box::new([]), Vec::new(), false); states_len].into_boxed_slice();
 
         let states_start: *mut DDFAState = (*states).as_mut_ptr();
 
@@ -122,10 +122,11 @@ impl Automaton<Input> for DFA {
 }
 
 impl DDFAState {
-    fn new(transitions: Box<[*const DDFAState]>,
-           pattern_ends: Vec<PatternNumber>,
-           is_final: bool)
-           -> Self {
+    fn new(
+        transitions: Box<[*const DDFAState]>,
+        pattern_ends: Vec<PatternNumber>,
+        is_final: bool,
+    ) -> Self {
         DDFAState {
             transitions,
             pattern_ends,
@@ -136,10 +137,7 @@ impl DDFAState {
 
 impl DDFA {
     fn new(states: Box<[DDFAState]>, dict: Vec<Vec<Input>>) -> Self {
-        DDFA {
-            states,
-            dict,
-        }
+        DDFA { states, dict }
     }
 
     pub fn apply(&self, input: &[u8]) -> Vec<PatternNumber> {
@@ -346,7 +344,7 @@ mod tests {
         nfa.ignore_prefixes();
         let dfa = nfa.powerset_construction().into_dfa().unwrap();
 
-        assert!(dfa.find( haystack.as_bytes()).next().is_none());
+        assert!(dfa.find(haystack.as_bytes()).next().is_none());
     }
 
     static HAYSTACK_SHERLOCK: &'static str = include_str!("../benches/sherlock.txt");

@@ -35,10 +35,10 @@ macro_rules! basic_benches {
     ($prefix:ident, $bench_no_match:expr) => {
         mod $prefix {
             #![allow(unused_imports)]
-            use super::{HAYSTACK_RANDOM, haystack_same, naive_find};
-            use dnfa::nfa::{NFA};
-            use dnfa::dfa::{DFA, DDFA};
-            use dnfa::automaton::{Automaton};
+            use super::{haystack_same, naive_find, HAYSTACK_RANDOM};
+            use dnfa::automaton::Automaton;
+            use dnfa::dfa::{DDFA, DFA};
+            use dnfa::nfa::NFA;
 
             use test::Bencher;
 
@@ -91,54 +91,68 @@ macro_rules! basic_benches {
 
             #[bench]
             fn ten_bytes(b: &mut Bencher) {
-                let needles = vec!["a", "b", "c", "d", "e",
-                                   "f", "g", "h", "i", "j"];
+                let needles = vec!["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"];
                 $bench_no_match(b, needles, &haystack_same('z'));
             }
 
             #[bench]
             fn ten_diff_prefix(b: &mut Bencher) {
-                let needles = vec!["abcdef", "bbcdef", "cbcdef", "dbcdef",
-                                   "ebcdef", "fbcdef", "gbcdef", "hbcdef",
-                                   "ibcdef", "jbcdef"];
+                let needles = vec![
+                    "abcdef", "bbcdef", "cbcdef", "dbcdef", "ebcdef", "fbcdef", "gbcdef", "hbcdef",
+                    "ibcdef", "jbcdef",
+                ];
                 $bench_no_match(b, needles, &haystack_same('z'));
             }
 
             #[bench]
             fn ten_one_prefix_byte_every_match(b: &mut Bencher) {
-                let needles = vec!["zacdef", "zbcdef", "zccdef", "zdcdef",
-                                   "zecdef", "zfcdef", "zgcdef", "zhcdef",
-                                   "zicdef", "zjcdef"];
+                let needles = vec![
+                    "zacdef", "zbcdef", "zccdef", "zdcdef", "zecdef", "zfcdef", "zgcdef", "zhcdef",
+                    "zicdef", "zjcdef",
+                ];
                 $bench_no_match(b, needles, &haystack_same('z'));
             }
 
             #[bench]
             fn ten_one_prefix_byte_no_match(b: &mut Bencher) {
-                let needles = vec!["zacdef", "zbcdef", "zccdef", "zdcdef",
-                                   "zecdef", "zfcdef", "zgcdef", "zhcdef",
-                                   "zicdef", "zjcdef"];
+                let needles = vec![
+                    "zacdef", "zbcdef", "zccdef", "zdcdef", "zecdef", "zfcdef", "zgcdef", "zhcdef",
+                    "zicdef", "zjcdef",
+                ];
                 $bench_no_match(b, needles, &haystack_same('y'));
             }
 
             #[bench]
             fn ten_one_prefix_byte_random(b: &mut Bencher) {
-                let needles = vec!["zacdef\x00", "zbcdef\x00", "zccdef\x00",
-                                   "zdcdef\x00", "zecdef\x00", "zfcdef\x00",
-                                   "zgcdef\x00", "zhcdef\x00", "zicdef\x00",
-                                   "zjcdef\x00"];
+                let needles = vec![
+                    "zacdef\x00",
+                    "zbcdef\x00",
+                    "zccdef\x00",
+                    "zdcdef\x00",
+                    "zecdef\x00",
+                    "zfcdef\x00",
+                    "zgcdef\x00",
+                    "zhcdef\x00",
+                    "zicdef\x00",
+                    "zjcdef\x00",
+                ];
                 $bench_no_match(b, needles, HAYSTACK_RANDOM);
             }
         }
-    }
+    };
 }
 
-basic_benches!(naive, |b: &mut Bencher, needles: Vec<&str>, haystack: &str| {
+basic_benches!(naive, |b: &mut Bencher,
+                       needles: Vec<&str>,
+                       haystack: &str| {
     b.bytes = haystack.len() as u64;
     let needles: Vec<String> = needles.into_iter().map(String::from).collect();
     b.iter(|| assert!(!naive_find(&needles, haystack)));
 });
 
-basic_benches!(nfa_direct, |b: &mut Bencher, needles: Vec<&str>, haystack: &str| {
+basic_benches!(nfa_direct, |b: &mut Bencher,
+                            needles: Vec<&str>,
+                            haystack: &str| {
     b.bytes = haystack.len() as u64;
     let mut nfa = NFA::from_dictionary(needles);
     nfa.ignore_prefixes();
@@ -146,7 +160,9 @@ basic_benches!(nfa_direct, |b: &mut Bencher, needles: Vec<&str>, haystack: &str|
     b.iter(|| assert!(nfa.find(haystack.as_bytes()).next().is_none()));
 });
 
-basic_benches!(nfa_boxed, |b: &mut Bencher, needles: Vec<&str>, haystack: &str| {
+basic_benches!(nfa_boxed, |b: &mut Bencher,
+                           needles: Vec<&str>,
+                           haystack: &str| {
     b.bytes = haystack.len() as u64;
     let mut nfa: NFA = NFA::from_dictionary(needles);
     nfa.ignore_prefixes();
@@ -155,7 +171,9 @@ basic_benches!(nfa_boxed, |b: &mut Bencher, needles: Vec<&str>, haystack: &str| 
     b.iter(|| assert!(Automaton::find(nfa, haystack.as_bytes()).next().is_none()));
 });
 
-basic_benches!(dnfa_direct, |b: &mut Bencher, needles: Vec<&str>, haystack: &str| {
+basic_benches!(dnfa_direct, |b: &mut Bencher,
+                             needles: Vec<&str>,
+                             haystack: &str| {
     b.bytes = haystack.len() as u64;
     let mut nfa = NFA::from_dictionary(needles);
     nfa.ignore_prefixes();
@@ -164,7 +182,9 @@ basic_benches!(dnfa_direct, |b: &mut Bencher, needles: Vec<&str>, haystack: &str
     b.iter(|| assert!(dnfa.find(haystack.as_bytes()).next().is_none()));
 });
 
-basic_benches!(dnfa_boxed, |b: &mut Bencher, needles: Vec<&str>, haystack: &str| {
+basic_benches!(dnfa_boxed, |b: &mut Bencher,
+                            needles: Vec<&str>,
+                            haystack: &str| {
     b.bytes = haystack.len() as u64;
     let mut nfa = NFA::from_dictionary(needles);
     nfa.ignore_prefixes();
@@ -173,7 +193,9 @@ basic_benches!(dnfa_boxed, |b: &mut Bencher, needles: Vec<&str>, haystack: &str|
     b.iter(|| assert!(Automaton::find(dnfa, haystack.as_bytes()).next().is_none()));
 });
 
-basic_benches!(dfa_direct, |b: &mut Bencher, needles: Vec<&str>, haystack: &str| {
+basic_benches!(dfa_direct, |b: &mut Bencher,
+                            needles: Vec<&str>,
+                            haystack: &str| {
     b.bytes = haystack.len() as u64;
     let mut nfa = NFA::from_dictionary(needles);
     nfa.ignore_prefixes();
@@ -182,7 +204,9 @@ basic_benches!(dfa_direct, |b: &mut Bencher, needles: Vec<&str>, haystack: &str|
     b.iter(|| assert!(dfa.find(haystack.as_bytes()).next().is_none()));
 });
 
-basic_benches!(dfa_boxed, |b: &mut Bencher, needles: Vec<&str>, haystack: &str| {
+basic_benches!(dfa_boxed, |b: &mut Bencher,
+                           needles: Vec<&str>,
+                           haystack: &str| {
     b.bytes = haystack.len() as u64;
     let mut nfa = NFA::from_dictionary(needles);
     nfa.ignore_prefixes();
@@ -191,20 +215,34 @@ basic_benches!(dfa_boxed, |b: &mut Bencher, needles: Vec<&str>, haystack: &str| 
     b.iter(|| assert!(Automaton::find(dfa, haystack.as_bytes()).next().is_none()));
 });
 
-basic_benches!(ddfa_direct, |b: &mut Bencher, needles: Vec<&str>, haystack: &str| {
+basic_benches!(ddfa_direct, |b: &mut Bencher,
+                             needles: Vec<&str>,
+                             haystack: &str| {
     b.bytes = haystack.len() as u64;
     let mut nfa = NFA::from_dictionary(needles);
     nfa.ignore_prefixes();
-    let ddfa = nfa.powerset_construction().into_dfa().unwrap().into_ddfa().unwrap();
+    let ddfa = nfa
+        .powerset_construction()
+        .into_dfa()
+        .unwrap()
+        .into_ddfa()
+        .unwrap();
 
     b.iter(|| assert!(ddfa.find(haystack.as_bytes()).next().is_none()));
 });
 
-basic_benches!(ddfa_boxed, |b: &mut Bencher, needles: Vec<&str>, haystack: &str| {
+basic_benches!(ddfa_boxed, |b: &mut Bencher,
+                            needles: Vec<&str>,
+                            haystack: &str| {
     b.bytes = haystack.len() as u64;
     let mut nfa = NFA::from_dictionary(needles);
     nfa.ignore_prefixes();
-    let ddfa: &DDFA = &nfa.powerset_construction().into_dfa().unwrap().into_ddfa().unwrap();
+    let ddfa: &DDFA = &nfa
+        .powerset_construction()
+        .into_dfa()
+        .unwrap()
+        .into_ddfa()
+        .unwrap();
 
     b.iter(|| assert!(Automaton::find(ddfa, haystack.as_bytes()).next().is_none()));
 });
