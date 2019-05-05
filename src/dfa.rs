@@ -60,7 +60,7 @@ impl DFA {
 
         let states_start: *mut DDFAState = (*states).as_mut_ptr();
 
-        for (i, ref st) in self.states.iter().enumerate() {
+        for (i, st) in self.states.iter().enumerate() {
             let mut v: Vec<*const DDFAState> = Vec::with_capacity(st.transitions.len());
             for &offset in st.transitions.iter() {
                 if offset >= states_len {

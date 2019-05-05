@@ -147,7 +147,7 @@ impl NFA {
             .states
             .iter_mut()
             .enumerate()
-            .filter(|&(_, ref st)| st.is_final());
+            .filter(|(_, st)| st.is_final());
         for (fin, state) in finals {
             for &byte in &self.alphabet {
                 state
@@ -463,7 +463,7 @@ impl NFAState {
 
     fn into_dfa(self) -> Result<DFAState, ()> {
         let mut transitions = vec![AUTO_STUCK; 256];
-        for (&i, ref sns) in &self.transitions {
+        for (&i, sns) in &self.transitions {
             if sns.len() != 1 {
                 return Err(());
             }
