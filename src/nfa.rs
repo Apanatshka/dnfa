@@ -390,7 +390,7 @@ impl Automaton<Input> for NFA {
         for &state in states {
             if let Some(&patt_no) = self.states[state].pattern_ends.get(patt_no_offset) {
                 return Match {
-                    patt_no: patt_no,
+                    patt_no,
                     start: text_offset - self.dict[patt_no].len(),
                     end: text_offset,
                 };

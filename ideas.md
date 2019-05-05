@@ -10,7 +10,7 @@ When the check if a state is a final state is done a lot (when we do multiple se
 
 ## Final state info outside of state
 
-When the check if a state is final is relatively rare (when we're doing a single search in a text for example), the information whether a state is final can be packed tightly and stored in the general information of the automaton. This makes the state structs more space-efficient and therefore the whole automaton is more cache-efficient. This idea is currently unused and probably not worth it the effort. 
+When the check if a state is final is relatively rare (when we're doing a single search in a text for example), the information whether a state is final can be packed tightly and stored in the general information of the automaton. This makes the state structs more space-efficient and therefore the whole automaton is more cache-efficient. This idea is currently unused and probably not worth the effort. 
 
 ## Optimise match of literals
 

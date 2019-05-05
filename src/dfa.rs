@@ -38,8 +38,8 @@ pub struct DDFAState {
 impl DFAState {
     pub fn new(transitions: Box<[StateNumber]>, pattern_ends: Vec<PatternNumber>) -> Self {
         DFAState {
-            transitions: transitions,
-            pattern_ends: pattern_ends,
+            transitions,
+            pattern_ends,
         }
     }
 }
@@ -47,9 +47,9 @@ impl DFAState {
 impl DFA {
     pub fn new(states: Box<[DFAState]>, finals: BitVec, dict: Vec<Vec<Input>>) -> Self {
         DFA {
-            states: states,
-            finals: finals,
-            dict: dict,
+            states,
+            finals,
+            dict,
         }
     }
 
@@ -114,7 +114,7 @@ impl Automaton<Input> for DFA {
     fn get_match(&self, &state: &Self::State, patt_no_offset: usize, text_offset: usize) -> Match {
         let patt_no = self.states[state].pattern_ends[patt_no_offset];
         Match {
-            patt_no: patt_no,
+            patt_no,
             start: text_offset - self.dict[patt_no].len(),
             end: text_offset,
         }
@@ -127,9 +127,9 @@ impl DDFAState {
            is_final: bool)
            -> Self {
         DDFAState {
-            transitions: transitions,
-            pattern_ends: pattern_ends,
-            is_final: is_final,
+            transitions,
+            pattern_ends,
+            is_final,
         }
     }
 }
@@ -137,8 +137,8 @@ impl DDFAState {
 impl DDFA {
     fn new(states: Box<[DDFAState]>, dict: Vec<Vec<Input>>) -> Self {
         DDFA {
-            states: states,
-            dict: dict,
+            states,
+            dict,
         }
     }
 
@@ -180,7 +180,7 @@ impl Automaton<Input> for DDFA {
     fn get_match(&self, &state: &Self::State, patt_no_offset: usize, text_offset: usize) -> Match {
         let patt_no = unsafe { *(*state).pattern_ends.get_unchecked(patt_no_offset) };
         Match {
-            patt_no: patt_no,
+            patt_no,
             start: text_offset - self.dict[patt_no].len(),
             end: text_offset,
         }
