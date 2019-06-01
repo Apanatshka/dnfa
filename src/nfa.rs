@@ -1,6 +1,4 @@
-extern crate bit_vec;
-
-use self::bit_vec::BitVec;
+use bit_vec::BitVec;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
@@ -193,10 +191,12 @@ impl NFA {
         // dnfa setup, two states: start and stuck, already in there
         let mut dnfa = NFA {
             alphabet: self.alphabet.clone(),
-            states: vec![NFAState::new(); 2],
+            states: Vec::with_capacity(self.states.len()),
             dict: self.dict.clone(),
             depth_map: BTreeMap::new(),
         };
+        dnfa.states.push(NFAState::new());
+        dnfa.states.push(NFAState::new());
         // Maps sets of state-numbers from the NFA, to state-numbers of the DNFA
         let mut states_map: HashMap<Vec<StateNumber>, StateNumber> = HashMap::new();
         // Set of states that the NFA is in
