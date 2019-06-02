@@ -7,8 +7,8 @@ use std::fmt;
 use crate::automaton::{Automaton, Match};
 use crate::dfa::{DFAState, DFA};
 
-pub const AUTO_START: usize = 0;
-pub const AUTO_STUCK: usize = 1;
+pub const START: usize = 1;
+pub const STUCK: usize = 0;
 
 pub type Input = u8;
 pub type StateNumber = usize;
@@ -61,7 +61,7 @@ impl NFA {
         // collect the alphabet from the patterns while we're looping through them anyway
         let mut alphabet = BTreeSet::new();
         for (pattern_no, bytes) in dict.into_iter().enumerate() {
-            let mut cur_state = AUTO_START;
+            let mut cur_state = START;
             for &byte in bytes.as_ref() {
                 alphabet.insert(byte);
                 // If there is a transition on this byte from the cur_state
@@ -104,7 +104,7 @@ impl NFA {
         let mut cur_nodes = BTreeSet::new();
         let mut nxt_nodes = BTreeSet::new();
 
-        cur_nodes.insert(AUTO_START);
+        cur_nodes.insert(START);
 
         while !cur_nodes.is_empty() {
             for &node in &cur_nodes {
@@ -131,11 +131,11 @@ impl NFA {
     pub fn ignore_prefixes(&mut self) {
         self.alphabet = (0..=255).collect();
         for &byte in &self.alphabet {
-            self.states[AUTO_START]
+            self.states[START]
                 .transitions
                 .entry(byte)
                 .or_insert_with(BTreeSet::new)
-                .insert(AUTO_START);
+                .insert(START);
         }
     }
 
@@ -169,7 +169,7 @@ impl NFA {
     pub fn apply(&self, input: &[Input]) -> Vec<PatternNumber> {
         let mut cur_states = BTreeSet::new();
         let mut nxt_states = BTreeSet::new();
-        cur_states.insert(AUTO_START);
+        cur_states.insert(START);
         for &byte in input {
             for cur_state in cur_states {
                 if let Some(nxts) = self.states[cur_state].transitions.get(&byte) {
@@ -200,16 +200,16 @@ impl NFA {
         // Maps sets of state-numbers from the NFA, to state-numbers of the DNFA
         let mut states_map: HashMap<Vec<StateNumber>, StateNumber> = HashMap::new();
         // Set of states that the NFA is in
-        let cur_states: BTreeSet<StateNumber> = [AUTO_START].into_iter().cloned().collect();
+        let cur_states: BTreeSet<StateNumber> = [START].into_iter().cloned().collect();
 
-        dnfa.states[AUTO_START].pattern_ends = self.states[AUTO_START].pattern_ends.clone();
+        dnfa.states[START].pattern_ends = self.states[START].pattern_ends.clone();
 
         // While executing an NFA, no states means we're stuck,
-        states_map.insert(Vec::new(), AUTO_STUCK);
+        states_map.insert(Vec::new(), STUCK);
         // stuck state only means we're stuck,
-        states_map.insert(vec![AUTO_STUCK], AUTO_STUCK);
+        states_map.insert(vec![STUCK], STUCK);
         // start state only means we're at the start.
-        states_map.insert(vec![AUTO_START], AUTO_START);
+        states_map.insert(vec![START], START);
 
         // The "recursive" part. We start in only the start state.
         // For every item (nfa-state-set, dfa-state), we go over every symbol in the alphabet.
@@ -220,7 +220,7 @@ impl NFA {
         // We can check if we've seen it yet with the states_map.
         // When we add a new item to the worklist we add a transition to the dfa from the current
         //  dfa-state to the new one, labeled with the current symbol of the alphabet.
-        let mut worklist = vec![(cur_states, AUTO_START)];
+        let mut worklist = vec![(cur_states, START)];
         while let Some((cur_states, cur_num)) = worklist.pop() {
             for &input in &dnfa.alphabet {
                 let mut nxt_states = BTreeSet::new();
@@ -243,7 +243,7 @@ impl NFA {
                         new_state.pattern_ends = fin.into_iter().collect();
                         dnfa_states.push(new_state);
                         states_map.insert(nxt_states_vec, nxt_num);
-                        if nxt_num != AUTO_STUCK {
+                        if nxt_num != STUCK {
                             worklist.push((nxt_states, nxt_num));
                         }
                         nxt_num
@@ -292,7 +292,7 @@ digraph automaton {{
         let mut original_edges = BTreeSet::new();
 
         for bytes in &self.dict {
-            let mut cur_state = AUTO_START;
+            let mut cur_state = START;
             for &byte in bytes {
                 if let Some(nxt_states) = self.states[cur_state].transitions.get(&byte) {
                     if let Some(&nxt_state) = nxt_states.iter().next() {
@@ -304,11 +304,11 @@ digraph automaton {{
         }
 
         for (from, state) in (*self.states).into_iter().enumerate() {
-            if options.suppress_stuck_state && from == AUTO_STUCK {
+            if options.suppress_stuck_state && from == STUCK {
                 continue;
             }
             w!("    {}", from);
-            if from == AUTO_STUCK {
+            if from == STUCK {
                 w!(r#" [label="⊥"]"#);
             }
             if self.states[from].is_final() {
@@ -317,7 +317,7 @@ digraph automaton {{
             w!(";\n");
             let flipped_transitions = flip_multimap(state.transitions.clone());
             for (to, bytes) in flipped_transitions {
-                if options.suppress_stuck_state && to == AUTO_STUCK {
+                if options.suppress_stuck_state && to == STUCK {
                     continue;
                 }
                 w!("    {} -> {}", from, to);
@@ -377,11 +377,11 @@ impl Automaton<Input> for NFA {
     type State = BTreeSet<StateNumber>;
 
     fn start_state(&self) -> Self::State {
-        [AUTO_START].iter().cloned().collect()
+        [START].iter().cloned().collect()
     }
 
     fn stuck_state(&self) -> Self::State {
-        [AUTO_STUCK].iter().cloned().collect()
+        [STUCK].iter().cloned().collect()
     }
 
     #[inline]
@@ -429,10 +429,10 @@ impl fmt::Debug for NFA {
         }
         for (i, state) in (*self.states).into_iter().enumerate() {
             w!("{}", i);
-            if i == AUTO_START {
+            if i == START {
                 w!(" (start)");
             }
-            if i == AUTO_STUCK {
+            if i == STUCK {
                 w!(" (stuck)");
             }
             if self.states[i].is_final() {
@@ -462,7 +462,7 @@ impl NFAState {
     }
 
     fn into_dfa(self) -> Result<DFAState, ()> {
-        let mut transitions = vec![AUTO_STUCK; 256];
+        let mut transitions = vec![STUCK; 256];
         for (&i, sns) in &self.transitions {
             if sns.len() != 1 {
                 return Err(());

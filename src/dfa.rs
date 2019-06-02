@@ -3,7 +3,7 @@ use std::fmt;
 use std::mem;
 
 use crate::automaton::{Automaton, Match};
-use crate::nfa::{AUTO_START, AUTO_STUCK};
+use crate::nfa::{START, STUCK};
 
 pub type Input = u8;
 pub type StateNumber = usize;
@@ -76,10 +76,10 @@ impl DFA {
     }
 
     pub fn apply(&self, input: &[u8]) -> Vec<PatternNumber> {
-        let mut cur_state = AUTO_START;
+        let mut cur_state = START;
         for &byte in input {
             cur_state = self.states[cur_state].transitions[byte as usize];
-            if cur_state == AUTO_STUCK {
+            if cur_state == STUCK {
                 break;
             }
         }
@@ -91,11 +91,11 @@ impl Automaton<Input> for DFA {
     type State = StateNumber;
 
     fn start_state(&self) -> Self::State {
-        AUTO_START
+        START
     }
 
     fn stuck_state(&self) -> Self::State {
-        AUTO_STUCK
+        STUCK
     }
 
     #[inline]
@@ -139,8 +139,8 @@ impl DDFA {
     }
 
     pub fn apply(&self, input: &[u8]) -> Vec<PatternNumber> {
-        let mut cur_state: *const DDFAState = &self.states[AUTO_START];
-        let stuck = &self.states[AUTO_STUCK];
+        let mut cur_state: *const DDFAState = &self.states[START];
+        let stuck = &self.states[STUCK];
         for &byte in input {
             cur_state = unsafe { (*cur_state).transitions[byte as usize] };
             if cur_state == stuck {
@@ -155,11 +155,11 @@ impl Automaton<Input> for DDFA {
     type State = *const DDFAState;
 
     fn start_state(&self) -> Self::State {
-        &self.states[AUTO_START]
+        &self.states[START]
     }
 
     fn stuck_state(&self) -> Self::State {
-        &self.states[AUTO_STUCK]
+        &self.states[STUCK]
     }
 
     #[inline]
@@ -195,12 +195,12 @@ macro_rules! debug_impl {
                 $compute_tr_no
                 let start = compute_start(&self);
                 for (i, state) in (*self.states).into_iter().enumerate() {
-                    if i == AUTO_STUCK {
-                        write!(f, "{} (stuck),\n", AUTO_STUCK)?;
+                    if i == STUCK {
+                        write!(f, "{} (stuck),\n", STUCK)?;
                         continue;
                     }
                     write!(f, "{}", i)?;
-                    if i == AUTO_START {
+                    if i == START {
                         write!(f, " (start)")?;
                     }
                     if compute_finality(&self, state, i) {
@@ -263,7 +263,7 @@ debug_impl!(
         state.is_final
     },
     fn compute_start(ddfa: &DDFA) -> *const DDFAState {
-        &ddfa.states[AUTO_START] as *const DDFAState
+        &ddfa.states[START] as *const DDFAState
     },
     fn compute_tr_no(tr: &*const DDFAState, start: *const DDFAState) -> usize {
         (*tr as usize - start as usize) / mem::size_of::<DDFAState>()
